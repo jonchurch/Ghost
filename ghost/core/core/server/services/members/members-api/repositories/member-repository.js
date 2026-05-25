@@ -66,6 +66,7 @@ module.exports = class MemberRepository {
      * @param {any} deps.offersAPI
      * @param {ITokenService} deps.tokenService
      * @param {any} deps.newslettersService
+     * @param {import('../../../automations/automations-repository').AutomationsRepository} deps.automationsRepository
      * @param {any} deps.Automation
      * @param {any} deps.WelcomeEmailAutomationRun
      */
@@ -87,6 +88,7 @@ module.exports = class MemberRepository {
         offersAPI,
         tokenService,
         newslettersService,
+        automationsRepository,
         Automation,
         WelcomeEmailAutomationRun
     }) {
@@ -107,6 +109,7 @@ module.exports = class MemberRepository {
         this._offersAPI = offersAPI;
         this.tokenService = tokenService;
         this._newslettersService = newslettersService;
+        this._automationsRepository = automationsRepository;
         this._Automation = Automation;
         this._WelcomeEmailAutomationRun = WelcomeEmailAutomationRun;
 
@@ -187,41 +190,96 @@ module.exports = class MemberRepository {
      * @param {string} memberId
      * @param {string} slug automation slug, see MEMBER_WELCOME_EMAIL_SLUGS
      * @param {object} [options] bookshelf options (transacting, context, etc.)
+     * @param {string} [options.memberEmail]
      */
     async enqueueWelcomeEmailRun(memberId, slug, options = {}) {
-        if (!this._Automation || !this._WelcomeEmailAutomationRun) {
+        let legacyRun = null;
+
+        if (this._Automation && this._WelcomeEmailAutomationRun) {
+            const automation = await this._Automation.findOne(
+                {slug},
+                {...options, withRelated: ['welcomeEmailAutomatedEmail']}
+            );
+            const email = automation?.related('welcomeEmailAutomatedEmail');
+            const isActive = Boolean(
+                automation &&
+                email &&
+                email.get('lexical') &&
+                automation.get('status') === 'active'
+            );
+
+            if (isActive) {
+                legacyRun = await this._WelcomeEmailAutomationRun.add({
+                    welcome_email_automation_id: automation.id,
+                    member_id: memberId,
+                    next_welcome_email_automated_email_id: email.id,
+                    ready_at: new Date(),
+                    step_started_at: null,
+                    step_attempts: 0,
+                    exit_reason: null
+                }, options);
+            }
+        }
+
+        const newRun = await this.enqueueNeopollWelcomeEmailRun(memberId, slug, {
+            ...options,
+            dispatchPollOnSuccess: !legacyRun
+        });
+
+        if (legacyRun || newRun) {
+            this.dispatchEvent(StartAutomationsPollEvent.create(), legacyRun ? options : {});
+        }
+
+        return legacyRun ?? newRun;
+    }
+
+    async enqueueNeopollWelcomeEmailRun(memberId, slug, options = {}) {
+        if (!this._automationsRepository) {
             return null;
         }
 
-        const automation = await this._Automation.findOne(
-            {slug},
-            {...options, withRelated: ['welcomeEmailAutomatedEmail']}
-        );
-        const email = automation?.related('welcomeEmailAutomatedEmail');
-        const isActive = Boolean(
-            automation &&
-            email &&
-            email.get('lexical') &&
-            automation.get('status') === 'active'
-        );
+        const enqueue = async () => {
+            let memberEmail = options.memberEmail;
 
-        if (!isActive) {
+            if (!memberEmail) {
+                const member = await this._Member?.findOne({id: memberId});
+                memberEmail = member?.get('email');
+            }
+
+            if (!memberEmail) {
+                logging.warn({
+                    system: {
+                        event: 'automations.neopoll.member_email_missing',
+                        member_id: memberId,
+                        slug
+                    }
+                }, `[AUTOMATIONS] Cannot enqueue new automation run for member ${memberId}: missing member email`);
+                return null;
+            }
+
+            return this._automationsRepository.enqueueRun({
+                memberEmail,
+                memberId,
+                slug
+            });
+        };
+
+        if (options?.transacting) {
+            options.transacting.executionPromise.then(enqueue).then((run) => {
+                if (run && options.dispatchPollOnSuccess) {
+                    DomainEvents.dispatch(StartAutomationsPollEvent.create());
+                }
+            }).catch((err) => {
+                logging.error({
+                    err,
+                    message: `Error enqueuing new automation run for member ${memberId} after transaction finished`
+                });
+            });
+
             return null;
         }
 
-        const run = await this._WelcomeEmailAutomationRun.add({
-            welcome_email_automation_id: automation.id,
-            member_id: memberId,
-            next_welcome_email_automated_email_id: email.id,
-            ready_at: new Date(),
-            step_started_at: null,
-            step_attempts: 0,
-            exit_reason: null
-        }, options);
-
-        this.dispatchEvent(StartAutomationsPollEvent.create(), options);
-
-        return run;
+        return enqueue();
     }
 
     /**
@@ -441,7 +499,10 @@ module.exports = class MemberRepository {
                     labels
                 }, {...memberAddOptions, transacting});
 
-                await this.enqueueWelcomeEmailRun(newMember.id, MEMBER_WELCOME_EMAIL_SLUGS.free, {transacting});
+                await this.enqueueWelcomeEmailRun(newMember.id, MEMBER_WELCOME_EMAIL_SLUGS.free, {
+                    transacting,
+                    memberEmail: newMember.get('email')
+                });
 
                 return newMember;
             };
@@ -1540,7 +1601,10 @@ module.exports = class MemberRepository {
                 updatedMember.get('status') === 'paid' &&
                 updatedMember._previousAttributes.status !== 'gift'
             ) {
-                await this.enqueueWelcomeEmailRun(memberModel.id, MEMBER_WELCOME_EMAIL_SLUGS.paid, options);
+                await this.enqueueWelcomeEmailRun(memberModel.id, MEMBER_WELCOME_EMAIL_SLUGS.paid, {
+                    ...options,
+                    memberEmail: memberModel.get('email')
+                });
             }
         }
     }

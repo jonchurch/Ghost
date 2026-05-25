@@ -9,7 +9,7 @@ const emailAddressService = require('../email-address');
 const settingsHelpers = require('../settings-helpers');
 const EmailAddressParser = require('../email-address/email-address-parser');
 const mail = require('../mail');
-const {Automation, WelcomeEmailAutomatedEmail, Newsletter} = require('../../models');
+const {Automation, EmailDesignSetting, WelcomeEmailAutomatedEmail, Newsletter} = require('../../models');
 const MemberWelcomeEmailRenderer = require('./member-welcome-email-renderer');
 const {MEMBER_WELCOME_EMAIL_LOG_KEY, MEMBER_WELCOME_EMAIL_TAG, MEMBER_WELCOME_EMAIL_SLUGS, MESSAGES} = require('./constants');
 
@@ -417,6 +417,54 @@ class MemberWelcomeEmailService {
         });
 
         const senderOptions = await this.#getEffectiveSenderOptions(memberWelcomeEmail);
+
+        await this.#mailer.send({
+            to: member.email,
+            subject,
+            html,
+            text,
+            forceTextContent: true,
+            tags: [MEMBER_WELCOME_EMAIL_TAG],
+            ...senderOptions
+        });
+    }
+
+    async sendAutomationEmail({email, member, memberStatus}) {
+        if (!member.email) {
+            throw new errors.IncorrectUsageError({
+                message: MESSAGES.MISSING_RECIPIENT_EMAIL
+            });
+        }
+
+        const name = member?.name ? `${member.name} at ` : '';
+        logging.info({
+            system: {
+                event: 'member_welcome_email.sending',
+                member_status: memberStatus
+            }
+        }, `${MEMBER_WELCOME_EMAIL_LOG_KEY} Sending welcome email to ${name}${member.email}`);
+
+        const designSettings = email.designSettingId ?
+            await EmailDesignSetting.findOne({id: email.designSettingId}) :
+            null;
+
+        const {html, text, subject} = await this.#renderer.render({
+            lexical: email.lexical,
+            subject: email.subject,
+            designSettings: designSettings?.id ? designSettings.toJSON() : null,
+            member: {
+                name: member.name,
+                email: member.email,
+                uuid: member.uuid
+            },
+            siteSettings: this.#getSiteSettings()
+        });
+
+        const senderOptions = await this.#getEffectiveSenderOptions({
+            senderName: email.senderName,
+            senderEmail: email.senderEmail,
+            senderReplyTo: email.senderReplyTo
+        });
 
         await this.#mailer.send({
             to: member.email,

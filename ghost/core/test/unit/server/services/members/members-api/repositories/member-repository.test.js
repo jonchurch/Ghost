@@ -4,10 +4,16 @@ const errors = require('@tryghost/errors');
 const DomainEvents = require('@tryghost/domain-events');
 const MemberRepository = require('../../../../../../../core/server/services/members/members-api/repositories/member-repository');
 const {SubscriptionCreatedEvent, OfferRedemptionEvent} = require('../../../../../../../core/shared/events');
+const {MEMBER_WELCOME_EMAIL_SLUGS} = require('../../../../../../../core/server/services/member-welcome-emails/constants');
 
 const mockOfferRedemption = {
     add: sinon.stub(),
     findOne: sinon.stub()
+};
+
+const flushPromises = async () => {
+    await Promise.resolve();
+    await Promise.resolve();
 };
 
 describe('MemberRepository', function () {
@@ -1543,6 +1549,7 @@ describe('MemberRepository', function () {
         let MemberSubscribeEvent;
         let newslettersService;
         let Automation;
+        let automationsRepository;
         const oldNodeEnv = process.env.NODE_ENV;
 
         beforeEach(function () {
@@ -1600,6 +1607,10 @@ describe('MemberRepository', function () {
                 getAll: sinon.stub().resolves([])
             };
 
+            automationsRepository = {
+                enqueueRun: sinon.stub().resolves({id: 'new_automation_run_id'})
+            };
+
             Automation = {
                 findOne: sinon.stub().resolves({
                     id: 'automation_id_free',
@@ -1633,11 +1644,13 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 MemberSubscribeEventModel: MemberSubscribeEvent,
                 newslettersService,
+                automationsRepository,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
 
             await repo.create({email: 'test@example.com', name: 'Test Member'}, {});
+            await flushPromises();
 
             sinon.assert.calledOnce(WelcomeEmailAutomationRun.add);
             const runCall = WelcomeEmailAutomationRun.add.firstCall.args[0];
@@ -1648,6 +1661,11 @@ describe('MemberRepository', function () {
             assert.equal(runCall.step_started_at, null);
             assert.equal(runCall.step_attempts, 0);
             assert.equal(runCall.exit_reason, null);
+            sinon.assert.calledOnceWithExactly(automationsRepository.enqueueRun, {
+                memberEmail: 'test@example.com',
+                memberId: 'member_id_123',
+                slug: MEMBER_WELCOME_EMAIL_SLUGS.free
+            });
         });
 
         it('does not create automation run for disallowed sources', async function () {
@@ -1658,6 +1676,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 MemberSubscribeEventModel: MemberSubscribeEvent,
                 newslettersService,
+                automationsRepository,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -1670,8 +1689,11 @@ describe('MemberRepository', function () {
 
             for (const source of disallowedSources) {
                 WelcomeEmailAutomationRun.add.resetHistory();
+                automationsRepository.enqueueRun.resetHistory();
                 await repo.create({email: 'test@example.com', name: 'Test Member'}, {context: source.context});
+                await flushPromises();
                 sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
+                sinon.assert.notCalled(automationsRepository.enqueueRun);
             }
         });
 
@@ -1683,6 +1705,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 MemberSubscribeEventModel: MemberSubscribeEvent,
                 newslettersService,
+                automationsRepository,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -1717,13 +1740,20 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 MemberSubscribeEventModel: MemberSubscribeEvent,
                 newslettersService,
+                automationsRepository,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
 
             await repo.create({email: 'test@example.com', name: 'Test Member'}, {});
+            await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
+            sinon.assert.calledOnceWithExactly(automationsRepository.enqueueRun, {
+                memberEmail: 'test@example.com',
+                memberId: 'member_id_123',
+                slug: MEMBER_WELCOME_EMAIL_SLUGS.free
+            });
         });
 
         it('does NOT create automation run when member is signing up for a paid subscription (stripeCustomer is present)', async function () {
@@ -1738,6 +1768,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 MemberSubscribeEventModel: MemberSubscribeEvent,
                 newslettersService,
+                automationsRepository,
                 Automation,
                 StripeCustomer,
                 OfferRedemption: mockOfferRedemption
@@ -1783,6 +1814,7 @@ describe('MemberRepository', function () {
         let stripeAPIService;
         let productRepository;
         let Automation;
+        let automationsRepository;
         let subscriptionData;
 
         beforeEach(function () {
@@ -1927,6 +1959,10 @@ describe('MemberRepository', function () {
                     })
                 })
             };
+
+            automationsRepository = {
+                enqueueRun: sinon.stub().resolves({id: 'new_automation_run_id'})
+            };
         });
 
         afterEach(function () {
@@ -1953,6 +1989,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 stripeAPIService,
                 productRepository,
+                automationsRepository,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -1968,6 +2005,7 @@ describe('MemberRepository', function () {
                 },
                 context: {}
             });
+            await flushPromises();
 
             sinon.assert.calledOnce(WelcomeEmailAutomationRun.add);
             const runCall = WelcomeEmailAutomationRun.add.firstCall.args[0];
@@ -1978,6 +2016,11 @@ describe('MemberRepository', function () {
             assert.equal(runCall.step_started_at, null);
             assert.equal(runCall.step_attempts, 0);
             assert.equal(runCall.exit_reason, null);
+            sinon.assert.calledOnceWithExactly(automationsRepository.enqueueRun, {
+                memberEmail: 'test@example.com',
+                memberId: 'member_id_123',
+                slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
+            });
         });
 
         it('does NOT create automation run for disallowed sources', async function () {
@@ -2000,6 +2043,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 stripeAPIService,
                 productRepository,
+                automationsRepository,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -2014,6 +2058,7 @@ describe('MemberRepository', function () {
 
             for (const source of disallowedSources) {
                 WelcomeEmailAutomationRun.add.resetHistory();
+                automationsRepository.enqueueRun.resetHistory();
                 await repo.linkSubscription({
                     id: 'member_id_123',
                     subscription: subscriptionData
@@ -2023,7 +2068,9 @@ describe('MemberRepository', function () {
                     },
                     context: source.context
                 });
+                await flushPromises();
                 sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
+                sinon.assert.notCalled(automationsRepository.enqueueRun);
             }
         });
 
@@ -2065,6 +2112,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 stripeAPIService,
                 productRepository,
+                automationsRepository,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -2080,8 +2128,14 @@ describe('MemberRepository', function () {
                 },
                 context: {}
             });
+            await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
+            sinon.assert.calledOnceWithExactly(automationsRepository.enqueueRun, {
+                memberEmail: 'test@example.com',
+                memberId: 'member_id_123',
+                slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
+            });
         });
 
         it('does NOT create automation run when previous status was "gift" (already received paid welcome at redemption)', async function () {
@@ -2104,6 +2158,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 stripeAPIService,
                 productRepository,
+                automationsRepository,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -2119,8 +2174,10 @@ describe('MemberRepository', function () {
                 },
                 context: {}
             });
+            await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
+            sinon.assert.notCalled(automationsRepository.enqueueRun);
         });
     });
 

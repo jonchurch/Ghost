@@ -7,10 +7,15 @@ import type {
     AutomationAction,
     AutomationEdge,
     AutomationSummary,
+    AutomationStepTerminalStatus,
+    AutomationStepToRun,
     AutomationsRepository,
     EditAutomationData,
     Page
 } from './automations-repository';
+
+const LOCK_TIMEOUT_MS = 30 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 
 const messages = {
     invalidAutomationActionRevision: 'Automation action "{actionId}" of type "{actionType}" is missing required revision field "{field}".',
@@ -43,6 +48,37 @@ interface EdgeRow {
     source_action_id: string;
     target_action_id: string;
 }
+
+type StepRow = {
+    id: string;
+    locked_by: string;
+    automation_run_id: string;
+    automation_id: string;
+    automation_slug: string;
+    automation_status: string;
+    member_id: string | null;
+    member_email: string;
+    action_id: string;
+    automation_action_revision_id: string;
+    type: 'wait' | 'send_email';
+    ready_at: string;
+    step_attempts: number;
+    wait_hours: number | null;
+    email_subject: string | null;
+    email_lexical: string | null;
+    email_sender_name: string | null;
+    email_sender_email: string | null;
+    email_sender_reply_to: string | null;
+    email_design_setting_id: string | null;
+};
+
+type NextActionRevisionRow = {
+    automation_id?: string;
+    action_id: string;
+    automation_action_revision_id: string;
+    type: 'wait' | 'send_email';
+    wait_hours: number | null;
+};
 
 export function createFakeDatabaseAutomationsRepository({
     getDatabase
@@ -98,6 +134,46 @@ export function createFakeDatabaseAutomationsRepository({
 
                 return buildAutomation(database, updatedAutomation);
             });
+        },
+
+        async enqueueRun(data: {
+            memberEmail: string;
+            memberId: string;
+            slug: string;
+        }): Promise<{id: string} | null> {
+            const database = getDatabase();
+
+            return withTransaction(database, () => enqueueRun(database, data));
+        },
+
+        async fetchAndLockSteps(limit: number): Promise<{
+            steps: AutomationStepToRun[],
+            nextStepReadyAt: null;
+        } | {
+            steps: never[],
+            nextStepReadyAt: null | Date;
+        }> {
+            const database = getDatabase();
+
+            return withTransaction(database, () => fetchAndLockSteps(database, limit));
+        },
+
+        async finishStepAndEnqueueNext(step: AutomationStepToRun): Promise<Date | null> {
+            const database = getDatabase();
+
+            return withTransaction(database, () => finishStepAndEnqueueNext(database, step));
+        },
+
+        async markStepTerminal(step: AutomationStepToRun, status: AutomationStepTerminalStatus): Promise<boolean> {
+            const database = getDatabase();
+
+            return withTransaction(database, () => markStepTerminal(database, step, status));
+        },
+
+        async retryStep(step: AutomationStepToRun, retryAt: Date): Promise<boolean> {
+            const database = getDatabase();
+
+            return withTransaction(database, () => retryStep(database, step, retryAt));
         }
     };
 }
@@ -112,6 +188,440 @@ function withTransaction<T>(database: DatabaseSync, operation: () => T): T {
     } catch (error) {
         database.exec('ROLLBACK');
         throw error;
+    }
+}
+
+function fetchAndLockSteps(database: DatabaseSync, limit: number): {
+    steps: AutomationStepToRun[],
+    nextStepReadyAt: null;
+} | {
+    steps: never[],
+    nextStepReadyAt: null | Date;
+} {
+    const now = new Date();
+    const nowString = now.toISOString();
+    const staleLockCutoff = new Date(now.getTime() - LOCK_TIMEOUT_MS).toISOString();
+    const lockId = ObjectId().toHexString();
+
+    const candidates = database.prepare(`
+        SELECT id
+        FROM automation_run_steps
+        WHERE (
+            status = 'pending'
+            AND ready_at <= ?
+        ) OR (
+            status = 'running'
+            AND locked_at < ?
+        )
+        ORDER BY ready_at, created_at, id
+        LIMIT ?
+    `).all(nowString, staleLockCutoff, limit) as unknown as Array<{id: string}>;
+
+    const candidateIds = candidates.map(candidate => candidate.id);
+
+    if (candidateIds.length === 0) {
+        return {
+            steps: [],
+            nextStepReadyAt: findNextPendingReadyAt(database, nowString)
+        };
+    }
+
+    const placeholders = candidateIds.map(() => '?').join(', ');
+
+    database.prepare(`
+        UPDATE automation_run_steps
+        SET status = 'running',
+            locked_by = ?,
+            locked_at = ?,
+            started_at = ?,
+            finished_at = NULL,
+            updated_at = ?,
+            step_attempts = step_attempts + 1
+        WHERE id IN (${placeholders})
+            AND (
+                (
+                    status = 'pending'
+                    AND ready_at <= ?
+                ) OR (
+                    status = 'running'
+                    AND locked_at < ?
+                )
+            )
+    `).run(lockId, nowString, nowString, nowString, ...candidateIds, nowString, staleLockCutoff);
+
+    const rows = database.prepare(`
+        SELECT
+            step.id AS id,
+            step.locked_by AS locked_by,
+            step.automation_run_id AS automation_run_id,
+            run.automation_id AS automation_id,
+            automation.slug AS automation_slug,
+            automation.status AS automation_status,
+            run.member_id AS member_id,
+            run.member_email AS member_email,
+            action.id AS action_id,
+            revision.id AS automation_action_revision_id,
+            action.type AS type,
+            step.ready_at AS ready_at,
+            step.step_attempts AS step_attempts,
+            revision.wait_hours AS wait_hours,
+            revision.email_subject AS email_subject,
+            revision.email_lexical AS email_lexical,
+            revision.email_sender_name AS email_sender_name,
+            revision.email_sender_email AS email_sender_email,
+            revision.email_sender_reply_to AS email_sender_reply_to,
+            revision.email_design_setting_id AS email_design_setting_id
+        FROM automation_run_steps step
+        INNER JOIN automation_runs run ON run.id = step.automation_run_id
+        INNER JOIN automations automation ON automation.id = run.automation_id
+        INNER JOIN automation_action_revisions revision ON revision.id = step.automation_action_revision_id
+        INNER JOIN automation_actions action ON action.id = revision.action_id
+        WHERE step.id IN (${placeholders})
+            AND step.status = 'running'
+            AND step.locked_by = ?
+        ORDER BY step.ready_at, step.created_at, step.id
+    `).all(...candidateIds, lockId) as unknown as StepRow[];
+
+    if (rows.length === 0) {
+        return {
+            steps: [],
+            nextStepReadyAt: findNextPendingReadyAt(database, nowString)
+        };
+    }
+
+    return {
+        steps: rows.map(row => buildStepToRun(row)),
+        nextStepReadyAt: null
+    };
+}
+
+function enqueueRun(database: DatabaseSync, {
+    memberEmail,
+    memberId,
+    slug
+}: {
+    memberEmail: string;
+    memberId: string;
+    slug: string;
+}): {id: string} | null {
+    const firstAction = findFirstActionRevision(database, slug);
+
+    if (!firstAction?.automation_id) {
+        return null;
+    }
+
+    const now = new Date();
+    const nowString = now.toISOString();
+    const readyAt = getReadyAtForAction(firstAction, now);
+    const run = {
+        id: ObjectId().toHexString(),
+        created_at: nowString,
+        updated_at: nowString,
+        automation_id: firstAction.automation_id,
+        member_id: memberId,
+        member_email: memberEmail
+    };
+
+    database.prepare(`
+        INSERT INTO automation_runs
+        (id, created_at, updated_at, automation_id, member_id, member_email) VALUES
+        (:id, :created_at, :updated_at, :automation_id, :member_id, :member_email)
+    `).run(run);
+
+    database.prepare(`
+        INSERT INTO automation_run_steps
+        (
+            id,
+            created_at,
+            updated_at,
+            automation_run_id,
+            automation_action_revision_id,
+            ready_at,
+            step_attempts,
+            started_at,
+            finished_at,
+            status,
+            locked_by,
+            locked_at
+        ) VALUES (
+            :id,
+            :created_at,
+            :updated_at,
+            :automation_run_id,
+            :automation_action_revision_id,
+            :ready_at,
+            0,
+            NULL,
+            NULL,
+            'pending',
+            NULL,
+            NULL
+        )
+    `).run({
+        id: ObjectId().toHexString(),
+        created_at: nowString,
+        updated_at: nowString,
+        automation_run_id: run.id,
+        automation_action_revision_id: firstAction.automation_action_revision_id,
+        ready_at: readyAt.toISOString()
+    });
+
+    return {
+        id: run.id
+    };
+}
+
+function findFirstActionRevision(database: DatabaseSync, slug: string): NextActionRevisionRow | null {
+    const row = database.prepare(`
+        SELECT
+            automation.id AS automation_id,
+            action.id AS action_id,
+            revision.id AS automation_action_revision_id,
+            action.type AS type,
+            revision.wait_hours AS wait_hours
+        FROM automations automation
+        INNER JOIN automation_actions action ON action.automation_id = automation.id
+        INNER JOIN automation_action_revisions revision ON revision.action_id = action.id
+        WHERE automation.slug = ?
+            AND automation.status = 'active'
+            AND action.deleted_at IS NULL
+            AND NOT EXISTS (
+                SELECT 1
+                FROM automation_action_edges edge
+                INNER JOIN automation_actions source_action ON source_action.id = edge.source_action_id
+                    AND source_action.deleted_at IS NULL
+                WHERE edge.target_action_id = action.id
+            )
+            AND revision.created_at = (
+                SELECT MAX(created_at)
+                FROM automation_action_revisions
+                WHERE action_id = action.id
+            )
+        ORDER BY action.created_at, action.id
+        LIMIT 1
+    `).get(slug) as NextActionRevisionRow | undefined;
+
+    return row ?? null;
+}
+
+function findNextPendingReadyAt(database: DatabaseSync, after: string): Date | null {
+    const row = database.prepare(`
+        SELECT MIN(ready_at) AS next_ready_at
+        FROM automation_run_steps
+        WHERE status = 'pending'
+            AND ready_at > ?
+    `).get(after) as {next_ready_at: string | null} | undefined;
+
+    return row?.next_ready_at ? new Date(row.next_ready_at) : null;
+}
+
+function finishStepAndEnqueueNext(database: DatabaseSync, step: AutomationStepToRun): Date | null {
+    const now = new Date();
+    const nowString = now.toISOString();
+    const didFinish = updateLockedStep(database, step, {
+        status: 'finished',
+        started_at: undefined,
+        finished_at: nowString,
+        ready_at: undefined,
+        clearLock: true,
+        updated_at: nowString
+    });
+
+    if (!didFinish) {
+        return null;
+    }
+
+    const next = findNextActionRevision(database, step.action_id);
+
+    if (!next) {
+        return null;
+    }
+
+    const nextReadyAt = getReadyAtForAction(next, now);
+    const nextReadyAtString = nextReadyAt.toISOString();
+
+    database.prepare(`
+        INSERT INTO automation_run_steps
+        (
+            id,
+            created_at,
+            updated_at,
+            automation_run_id,
+            automation_action_revision_id,
+            ready_at,
+            step_attempts,
+            started_at,
+            finished_at,
+            status,
+            locked_by,
+            locked_at
+        ) VALUES (
+            :id,
+            :created_at,
+            :updated_at,
+            :automation_run_id,
+            :automation_action_revision_id,
+            :ready_at,
+            :step_attempts,
+            NULL,
+            NULL,
+            'pending',
+            NULL,
+            NULL
+        )
+    `).run({
+        id: ObjectId().toHexString(),
+        created_at: nowString,
+        updated_at: nowString,
+        automation_run_id: step.automation_run_id,
+        automation_action_revision_id: next.automation_action_revision_id,
+        ready_at: nextReadyAtString,
+        step_attempts: 0
+    });
+
+    return nextReadyAt;
+}
+
+function markStepTerminal(database: DatabaseSync, step: AutomationStepToRun, status: AutomationStepTerminalStatus): boolean {
+    const nowString = new Date().toISOString();
+
+    return updateLockedStep(database, step, {
+        status,
+        started_at: undefined,
+        finished_at: nowString,
+        ready_at: undefined,
+        clearLock: true,
+        updated_at: nowString
+    });
+}
+
+function retryStep(database: DatabaseSync, step: AutomationStepToRun, retryAt: Date): boolean {
+    const nowString = new Date().toISOString();
+
+    return updateLockedStep(database, step, {
+        status: 'pending',
+        started_at: null,
+        finished_at: null,
+        ready_at: retryAt.toISOString(),
+        clearLock: true,
+        updated_at: nowString
+    });
+}
+
+function findNextActionRevision(database: DatabaseSync, sourceActionId: string): NextActionRevisionRow | null {
+    const row = database.prepare(`
+        SELECT
+            action.id AS action_id,
+            revision.id AS automation_action_revision_id,
+            action.type AS type,
+            revision.wait_hours AS wait_hours
+        FROM automation_action_edges edge
+        INNER JOIN automation_actions action ON action.id = edge.target_action_id
+        INNER JOIN automation_action_revisions revision ON revision.action_id = action.id
+        WHERE edge.source_action_id = ?
+            AND action.deleted_at IS NULL
+            AND revision.created_at = (
+                SELECT MAX(created_at)
+                FROM automation_action_revisions
+                WHERE action_id = action.id
+            )
+        ORDER BY revision.created_at DESC, revision.id DESC
+        LIMIT 1
+    `).get(sourceActionId) as NextActionRevisionRow | undefined;
+
+    return row ?? null;
+}
+
+function getReadyAtForAction(action: Pick<NextActionRevisionRow, 'type' | 'wait_hours'>, now: Date): Date {
+    switch (action.type) {
+    case 'wait':
+        return new Date(now.getTime() + (requireValue(action.wait_hours, 'wait_hours', {
+            id: action.type,
+            type: action.type,
+            wait_hours: action.wait_hours,
+            email_subject: null,
+            email_lexical: null,
+            email_sender_name: null,
+            email_sender_email: null,
+            email_sender_reply_to: null,
+            email_design_setting_id: null
+        }) * HOUR_MS));
+    case 'send_email':
+        return now;
+    }
+}
+
+function updateLockedStep(database: DatabaseSync, step: AutomationStepToRun, attrs: {
+    status: string;
+    started_at?: string | null;
+    finished_at?: string | null;
+    ready_at?: string;
+    clearLock: boolean;
+    updated_at: string;
+}): boolean {
+    const result = database.prepare(`
+        UPDATE automation_run_steps
+        SET status = :status,
+            updated_at = :updated_at,
+            started_at = CASE WHEN :set_started_at THEN :started_at ELSE started_at END,
+            finished_at = CASE WHEN :set_finished_at THEN :finished_at ELSE finished_at END,
+            ready_at = CASE WHEN :set_ready_at THEN :ready_at ELSE ready_at END,
+            locked_by = CASE WHEN :clear_lock THEN NULL ELSE locked_by END,
+            locked_at = CASE WHEN :clear_lock THEN NULL ELSE locked_at END
+        WHERE id = :id
+            AND status = 'running'
+            AND locked_by = :locked_by
+    `).run({
+        id: step.id,
+        locked_by: step.locked_by,
+        status: attrs.status,
+        updated_at: attrs.updated_at,
+        set_started_at: attrs.started_at === undefined ? 0 : 1,
+        started_at: attrs.started_at ?? null,
+        set_finished_at: attrs.finished_at === undefined ? 0 : 1,
+        finished_at: attrs.finished_at ?? null,
+        set_ready_at: attrs.ready_at === undefined ? 0 : 1,
+        ready_at: attrs.ready_at ?? null,
+        clear_lock: attrs.clearLock ? 1 : 0
+    }) as unknown as {changes: number};
+
+    return result.changes === 1;
+}
+
+function buildStepToRun(row: StepRow): AutomationStepToRun {
+    const base = {
+        id: row.id,
+        locked_by: row.locked_by,
+        automation_run_id: row.automation_run_id,
+        automation_id: row.automation_id,
+        automation_slug: row.automation_slug,
+        automation_status: row.automation_status,
+        member_id: row.member_id,
+        member_email: row.member_email,
+        action_id: row.action_id,
+        automation_action_revision_id: row.automation_action_revision_id,
+        ready_at: new Date(row.ready_at),
+        step_attempts: row.step_attempts
+    };
+
+    switch (row.type) {
+    case 'wait':
+        return {
+            ...base,
+            type: 'wait',
+            wait_hours: requireValue(row.wait_hours, 'wait_hours', row)
+        };
+    case 'send_email':
+        return {
+            ...base,
+            type: 'send_email',
+            email_subject: requireValue(row.email_subject, 'email_subject', row),
+            email_lexical: requireValue(row.email_lexical, 'email_lexical', row),
+            email_sender_name: row.email_sender_name,
+            email_sender_email: row.email_sender_email,
+            email_sender_reply_to: row.email_sender_reply_to,
+            email_design_setting_id: row.email_design_setting_id
+        };
     }
 }
 

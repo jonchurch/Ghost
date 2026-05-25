@@ -238,6 +238,10 @@ function requestPoll() {
     domainEvents.dispatch(StartAutomationsPollEvent.create());
 }
 
+function getRepository() {
+    return repository;
+}
+
 function _resetTestDatabase() {
     if (process.env.NODE_ENV?.startsWith('testing')) {
         testDatabase = null;
@@ -248,6 +252,7 @@ module.exports = {
     _resetTestDatabase,
     browse,
     edit,
+    getRepository,
     read,
     requestPoll
 };

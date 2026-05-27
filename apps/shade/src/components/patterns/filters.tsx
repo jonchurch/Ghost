@@ -885,6 +885,7 @@ export interface FilterOption<T = unknown> {
     value: T;
     label: string;
     detail?: string;
+    group?: string;
     icon?: React.ReactNode;
     metadata?: Record<string, unknown>;
 }
@@ -1295,8 +1296,25 @@ function filterOptionsBySearchInput<T = unknown>(options: FilterOption<T>[], sea
 
     return options.filter((option) => {
         return option.label.toLowerCase().includes(normalizedSearch) ||
-            option.detail?.toLowerCase().includes(normalizedSearch);
+            option.detail?.toLowerCase().includes(normalizedSearch) ||
+            option.group?.toLowerCase().includes(normalizedSearch);
     });
+}
+
+function groupOptionsByHeading<T = unknown>(options: FilterOption<T>[]): Array<{heading?: string; options: FilterOption<T>[]}> {
+    const grouped = new Map<string | undefined, FilterOption<T>[]>();
+
+    for (const option of options) {
+        const heading = option.group;
+        const group = grouped.get(heading) ?? [];
+        group.push(option);
+        grouped.set(heading, group);
+    }
+
+    return [...grouped.entries()].map(([heading, group]) => ({
+        heading,
+        options: group
+    }));
 }
 
 interface SelectOptionsListProps<T = unknown> {
@@ -1323,6 +1341,24 @@ function SelectOptionsList<T = unknown>({
     onSelectUnselected
 }: Readonly<SelectOptionsListProps<T>>) {
     const context = useFilterContext();
+    const hasGroupedOptions = unselectedOptions.some(option => option.group);
+    const unselectedOptionGroups = hasGroupedOptions ? groupOptionsByHeading(unselectedOptions) : [];
+
+    const renderUnselectedOption = (option: FilterOption<T>) => (
+        <CommandItem
+            key={String(option.value)}
+            className="group flex items-center gap-2"
+            value={[option.label, option.detail, option.group].filter(Boolean).join(' - ')}
+            onSelect={() => onSelectUnselected(option)}
+        >
+            {option.icon && option.icon}
+            <div className="flex flex-col overflow-hidden">
+                <span className="truncate text-accent-foreground" title={option.label}>{option.label}</span>
+                {option.detail && <span className="truncate text-sm text-muted-foreground" title={option.detail}>{option.detail}</span>}
+            </div>
+            <Check className="ms-auto text-primary opacity-0" />
+        </CommandItem>
+    );
 
     return (
         <CommandList className="outline-hidden">
@@ -1357,23 +1393,17 @@ function SelectOptionsList<T = unknown>({
             {unselectedOptions.length > 0 && (
                 <>
                     {selectedOptions.length > 0 && <CommandSeparator />}
-                    <CommandGroup>
-                        {unselectedOptions.map(option => (
-                            <CommandItem
-                                key={String(option.value)}
-                                className="group flex items-center gap-2"
-                                value={option.label + (option.detail ? ` - ${option.detail}` : '')}
-                                onSelect={() => onSelectUnselected(option)}
-                            >
-                                {option.icon && option.icon}
-                                <div className="flex flex-col overflow-hidden">
-                                    <span className="truncate text-accent-foreground" title={option.label}>{option.label}</span>
-                                    {option.detail && <span className="truncate text-sm text-muted-foreground" title={option.detail}>{option.detail}</span>}
-                                </div>
-                                <Check className="ms-auto text-primary opacity-0" />
-                            </CommandItem>
-                        ))}
-                    </CommandGroup>
+                    {hasGroupedOptions ? (
+                        unselectedOptionGroups.map(group => (
+                            <CommandGroup key={group.heading ? `group:${group.heading}` : 'group:__ungrouped'} heading={group.heading}>
+                                {group.options.map(renderUnselectedOption)}
+                            </CommandGroup>
+                        ))
+                    ) : (
+                        <CommandGroup>
+                            {unselectedOptions.map(renderUnselectedOption)}
+                        </CommandGroup>
+                    )}
                 </>
             )}
             {hasMore && (
@@ -1477,7 +1507,18 @@ function ResolvedSelectOptionsPopover<T = unknown>({
     const visibleSelectedOptions = useMemo(() => {
         return filterOptionsBySearchInput(selectedOptions, searchInput);
     }, [searchInput, selectedOptions]);
-    const unselectedOptions = field.options?.filter(opt => !effectiveValues.includes(opt.value)) || [];
+    const unselectedOptions = useMemo(() => {
+        return field.options?.filter(opt => !effectiveValues.includes(opt.value)) || [];
+    }, [effectiveValues, field.options]);
+    const visibleUnselectedOptions = useMemo(() => {
+        const hasGroupedOptions = unselectedOptions.some(option => option.group);
+
+        if (!shouldClientFilter || !hasGroupedOptions) {
+            return unselectedOptions;
+        }
+
+        return filterOptionsBySearchInput(unselectedOptions, searchInput);
+    }, [searchInput, shouldClientFilter, unselectedOptions]);
 
     const handleSearchChange = (value: string) => {
         onSearchChange(value);
@@ -1508,7 +1549,7 @@ function ResolvedSelectOptionsPopover<T = unknown>({
                         isInitialLoad={isInitialLoad}
                         isLoadingMore={isLoadingMore}
                         selectedOptions={visibleSelectedOptions}
-                        unselectedOptions={unselectedOptions}
+                        unselectedOptions={visibleUnselectedOptions}
                         onLoadMore={onLoadMore}
                         onSelectSelected={(option) => {
                             if (isMultiSelect) {
@@ -1614,7 +1655,7 @@ function ResolvedSelectOptionsPopover<T = unknown>({
                         isInitialLoad={isInitialLoad}
                         isLoadingMore={isLoadingMore}
                         selectedOptions={visibleSelectedOptions}
-                        unselectedOptions={unselectedOptions}
+                        unselectedOptions={visibleUnselectedOptions}
                         onLoadMore={onLoadMore}
                         onSelectSelected={(option) => {
                             if (isMultiSelect) {

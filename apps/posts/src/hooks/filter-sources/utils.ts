@@ -18,7 +18,8 @@ export function filterOptionsByQuery<T = string>(options: FilterOption<T>[], que
 
     return options.filter((option) => {
         return option.label.toLowerCase().includes(normalizedQuery) ||
-            option.detail?.toLowerCase().includes(normalizedQuery);
+            option.detail?.toLowerCase().includes(normalizedQuery) ||
+            option.group?.toLowerCase().includes(normalizedQuery);
     });
 }
 

@@ -14,7 +14,6 @@ import {getSiteTimezone} from '@src/utils/get-site-timezone';
 import {useBrowseConfig} from '@tryghost/admin-x-framework/api/config';
 import {useBrowseNewsletters} from '@tryghost/admin-x-framework/api/newsletters';
 import {useBrowseOffers} from '@tryghost/admin-x-framework/api/offers';
-import {useBrowseTiers} from '@tryghost/admin-x-framework/api/tiers';
 import {useEmailPostValueSource} from '@src/hooks/filter-sources/use-email-post-value-source';
 import {useLabelValueSource} from '@src/hooks/filter-sources/use-label-value-source';
 import {usePostResourceValueSource} from '@src/hooks/filter-sources/use-post-resource-value-source';
@@ -56,7 +55,6 @@ const MembersFilters: React.FC<MembersFiltersProps> = ({
     activeView,
     iconOnly = false
 }) => {
-    const {data: tiersData} = useBrowseTiers({searchParams: {limit: '100'}});
     const {data: offersData} = useBrowseOffers({});
     const {data: newslettersData} = useBrowseNewsletters({searchParams: {limit: '100'}});
     const {data: settingsData} = useBrowseSettings({});
@@ -71,11 +69,8 @@ const MembersFilters: React.FC<MembersFiltersProps> = ({
     const siteTimezone = getSiteTimezone(settings);
     const giftSubscriptionsEnabled = configData?.config?.labs?.giftSubscriptions === true;
 
-    const tiers = tiersData?.tiers || [];
     const newsletters = newslettersData?.newsletters || [];
     const offers = useMemo(() => offersData?.offers ?? EMPTY_OFFERS, [offersData?.offers]);
-    const activePaidTiers = tiers.filter(tier => tier.type === 'paid' && tier.active);
-    const hasMultipleTiers = activePaidTiers.length > 1;
 
     const offersOptions = useMemo(() => {
         return buildOfferOptions(offers);
@@ -101,7 +96,8 @@ const MembersFilters: React.FC<MembersFiltersProps> = ({
     const postValueSource = usePostResourceValueSource();
     const emailValueSource = useEmailPostValueSource();
     const labelValueSource = useLabelValueSource();
-    const tierValueSource = useTierValueSource(activePaidTiers.map(tier => ({value: tier.id, label: tier.name, detail: tier.slug})));
+    const tierValueSource = useTierValueSource();
+    const hasMultipleTiers = tierValueSource.hasMultipleTiers;
 
     const filterFields = useMemberFilterFields({
         newsletters,

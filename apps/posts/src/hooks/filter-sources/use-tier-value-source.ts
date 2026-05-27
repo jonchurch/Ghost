@@ -1,15 +1,70 @@
-import {FilterOption, ValueSource} from '@tryghost/shade/patterns';
 import {createLocalValueSource} from './create-local-value-source';
+import {useBrowseTiers} from '@tryghost/admin-x-framework/api/tiers';
+import {useEffect, useMemo} from 'react';
+import type {FilterOption, ValueSource} from '@tryghost/shade/patterns';
+import type {Tier} from '@tryghost/admin-x-framework/api/tiers';
 
-export function useTierValueSource(options: FilterOption<string>[] = []): ValueSource<string> {
+const TIER_FILTER_PAGE_LIMIT = '100';
+const TIER_FILTER_TYPE = 'type:paid';
+const ACTIVE_TIERS_GROUP = 'Active tiers';
+const ARCHIVED_TIERS_GROUP = 'Archived tiers';
+
+type TierValueSource = ValueSource<string> & {
+    hasMultipleTiers: boolean;
+};
+
+function toTierFilterOption(tier: Tier): FilterOption<string> {
+    return {
+        value: tier.id,
+        label: tier.name,
+        detail: tier.slug,
+        group: tier.active ? ACTIVE_TIERS_GROUP : ARCHIVED_TIERS_GROUP
+    };
+}
+
+export function buildTierFilterOptions(tiers: Tier[] = []): FilterOption<string>[] {
+    const activeTiers = tiers.filter(tier => tier.active);
+    const archivedTiers = tiers.filter(tier => !tier.active);
+
+    return [
+        ...activeTiers.map(toTierFilterOption),
+        ...archivedTiers.map(toTierFilterOption)
+    ];
+}
+
+export function hasMultipleTierOptions(tiers: Tier[] = []): boolean {
+    return tiers.length > 1;
+}
+
+export function useTierValueSource(): TierValueSource {
+    const {
+        data: tiersData,
+        fetchNextPage,
+        isFetchingNextPage,
+        isLoading
+    } = useBrowseTiers({searchParams: {filter: TIER_FILTER_TYPE, limit: TIER_FILTER_PAGE_LIMIT}});
+
+    useEffect(() => {
+        if (tiersData?.isEnd === false && !isFetchingNextPage) {
+            void fetchNextPage();
+        }
+    }, [fetchNextPage, isFetchingNextPage, tiersData?.isEnd]);
+
+    const tiers = useMemo(() => tiersData?.tiers ?? [], [tiersData?.tiers]);
+    const options = useMemo(() => buildTierFilterOptions(tiers), [tiers]);
+    const hasMultipleTiers = useMemo(() => hasMultipleTierOptions(tiers), [tiers]);
+
     const useLocalTierValueSource = createLocalValueSource<FilterOption<string>, string>({
         id: 'posts.tiers.local',
         useItems: () => ({
             data: options,
-            isLoading: false
+            isLoading
         }),
         toOption: option => option
     });
 
-    return useLocalTierValueSource();
+    return {
+        ...useLocalTierValueSource(),
+        hasMultipleTiers
+    };
 }

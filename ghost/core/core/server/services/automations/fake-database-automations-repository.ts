@@ -1,5 +1,6 @@
 import errors from '@tryghost/errors';
 import tpl from '@tryghost/tpl';
+import crypto from 'node:crypto';
 import ObjectId from 'bson-objectid';
 import type {DatabaseSync} from 'node:sqlite';
 import type {
@@ -201,7 +202,7 @@ function fetchAndLockSteps(database: DatabaseSync, limit: number): {
     const now = new Date();
     const nowString = now.toISOString();
     const staleLockCutoff = new Date(now.getTime() - LOCK_TIMEOUT_MS).toISOString();
-    const lockId = ObjectId().toHexString();
+    const lockId = crypto.randomUUID();
 
     const candidates = database.prepare(`
         SELECT id

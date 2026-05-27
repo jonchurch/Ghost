@@ -6,8 +6,7 @@ import type {DatabaseSync} from 'node:sqlite';
 import {z} from 'zod';
 import {createFakeDatabaseAutomationsRepository} from './fake-database-automations-repository';
 import type {
-    AutomationStepTerminalStatus,
-    AutomationStepToRun,
+    AutomationsRepository,
     EditAutomationData
 } from './automations-repository';
 
@@ -248,20 +247,20 @@ async function enqueueRun(data: {
     return await repository.enqueueRun(data);
 }
 
-async function fetchAndLockSteps(limit: number) {
-    return await repository.fetchAndLockSteps(limit);
+async function fetchAndLockSteps(...args: Parameters<AutomationsRepository['fetchAndLockSteps']>) {
+    return await repository.fetchAndLockSteps(...args);
 }
 
-async function finishStepAndEnqueueNext(step: AutomationStepToRun) {
-    return await repository.finishStepAndEnqueueNext(step);
+async function finishStepAndEnqueueNext(...args: Parameters<AutomationsRepository['finishStepAndEnqueueNext']>) {
+    return await repository.finishStepAndEnqueueNext(...args);
 }
 
-async function markStepTerminal(step: AutomationStepToRun, status: AutomationStepTerminalStatus) {
-    return await repository.markStepTerminal(step, status);
+async function markStepTerminal(...args: Parameters<AutomationsRepository['markStepTerminal']>) {
+    return await repository.markStepTerminal(...args);
 }
 
-async function retryStep(step: AutomationStepToRun, retryAt: Date) {
-    return await repository.retryStep(step, retryAt);
+async function retryStep(...args: Parameters<AutomationsRepository['retryStep']>) {
+    return await repository.retryStep(...args);
 }
 
 function _resetTestDatabase() {

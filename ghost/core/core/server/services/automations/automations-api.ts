@@ -239,12 +239,8 @@ function requestPoll() {
     domainEvents.dispatch(StartAutomationsPollEvent.create());
 }
 
-async function enqueueRun(data: {
-    memberEmail: string;
-    memberId: string;
-    slug: string;
-}) {
-    return await repository.enqueueRun(data);
+async function enqueueRun(...args: Parameters<AutomationsRepository['enqueueRun']>) {
+    return await repository.enqueueRun(...args);
 }
 
 async function fetchAndLockSteps(...args: Parameters<AutomationsRepository['fetchAndLockSteps']>) {

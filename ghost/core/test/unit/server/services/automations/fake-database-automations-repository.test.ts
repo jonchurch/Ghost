@@ -145,23 +145,22 @@ describe('fake database automations repository', function () {
     }
 
     it('enqueues a run and first step for the first action in an active automation', async function () {
-        const run = await repository.enqueueRun({
+        const result = await repository.enqueueRun({
             memberEmail: 'member@example.com',
             memberId: 'member-id',
             slug: 'member-welcome-email-free'
         });
 
-        assert.ok(run.id);
+        assert.equal(result, undefined);
 
         const runs = listRuns();
         assert.equal(runs.length, 1);
-        assert.equal(runs[0].id, run.id);
         assert.equal(runs[0].member_id, 'member-id');
         assert.equal(runs[0].member_email, 'member@example.com');
 
         const steps = listSteps();
         assert.equal(steps.length, 1);
-        assert.equal(steps[0].automation_run_id, run.id);
+        assert.equal(steps[0].automation_run_id, runs[0].id);
         assert.equal(steps[0].status, 'pending');
         assert.equal(steps[0].step_attempts, 0);
         assert.equal(new Date(steps[0].ready_at).getTime(), Date.now() + (48 * 60 * 60 * 1000));
@@ -175,13 +174,13 @@ describe('fake database automations repository', function () {
             WHERE id = ?
         `).run(automation.id);
 
-        const run = await repository.enqueueRun({
+        const result = await repository.enqueueRun({
             memberEmail: 'member@example.com',
             memberId: 'member-id',
             slug: 'member-welcome-email-free'
         });
 
-        assert.equal(run, null);
+        assert.equal(result, undefined);
         assert.deepEqual(listRuns(), []);
         assert.deepEqual(listSteps(), []);
     });

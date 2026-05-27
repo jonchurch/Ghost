@@ -179,8 +179,7 @@ module.exports = class MemberRepository {
     /**
      * Looks up the active welcome email automation for the given slug and enqueues a
      * `WelcomeEmailAutomationRun` for the member. Dispatches `StartAutomationsPollEvent`
-     * so the poll picks it up. Returns the created run, or null if there is no active
-     * automation/email for that slug.
+     * so the poll picks it up.
      *
      * Callers are responsible for any eligibility gating (member status, source, etc.)
      * before calling this — this helper just looks up + inserts + dispatches. Pass
@@ -221,16 +220,16 @@ module.exports = class MemberRepository {
             }
         }
 
-        const newRun = await this.enqueueAutomationsWelcomeEmailRun(memberId, slug, {
+        const newRunEnqueued = await this.enqueueAutomationsWelcomeEmailRun(memberId, slug, {
             ...options,
             dispatchPollOnSuccess: !legacyRun
         });
 
-        if (legacyRun || newRun) {
+        if (legacyRun || newRunEnqueued) {
             this.dispatchEvent(StartAutomationsPollEvent.create(), legacyRun ? options : {});
         }
 
-        return legacyRun ?? newRun;
+        return legacyRun;
     }
 
     async enqueueAutomationsWelcomeEmailRun(memberId, slug, options = {}) {
@@ -250,19 +249,21 @@ module.exports = class MemberRepository {
                         slug
                     }
                 }, `[AUTOMATIONS] Cannot enqueue new automation run for member ${memberId}: missing member email`);
-                return null;
+                return false;
             }
 
-            return this._automationsApi.enqueueRun({
+            await this._automationsApi.enqueueRun({
                 memberEmail,
                 memberId,
                 slug
             });
+
+            return true;
         };
 
         if (options?.transacting) {
-            options.transacting.executionPromise.then(enqueue).then((run) => {
-                if (run && options.dispatchPollOnSuccess) {
+            options.transacting.executionPromise.then(enqueue).then((enqueued) => {
+                if (enqueued && options.dispatchPollOnSuccess) {
                     DomainEvents.dispatch(StartAutomationsPollEvent.create());
                 }
             }).catch((err) => {

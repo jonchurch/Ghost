@@ -1608,7 +1608,7 @@ describe('MemberRepository', function () {
             };
 
             automationsApi = {
-                enqueueRun: sinon.stub().resolves({id: 'new_automation_run_id'})
+                enqueueRun: sinon.stub().resolves()
             };
 
             Automation = {
@@ -1961,7 +1961,7 @@ describe('MemberRepository', function () {
             };
 
             automationsApi = {
-                enqueueRun: sinon.stub().resolves({id: 'new_automation_run_id'})
+                enqueueRun: sinon.stub().resolves()
             };
         });
 

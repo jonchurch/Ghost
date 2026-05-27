@@ -141,7 +141,7 @@ export function createFakeDatabaseAutomationsRepository({
             memberEmail: string;
             memberId: string;
             slug: string;
-        }): Promise<{id: string} | null> {
+        }): Promise<void> {
             const database = getDatabase();
 
             return withTransaction(database, () => enqueueRun(database, data));
@@ -299,11 +299,11 @@ function enqueueRun(database: DatabaseSync, {
     memberEmail: string;
     memberId: string;
     slug: string;
-}): {id: string} | null {
+}): void {
     const firstAction = findFirstActionRevision(database, slug);
 
     if (!firstAction?.automation_id) {
-        return null;
+        return;
     }
 
     const now = new Date();
@@ -362,9 +362,6 @@ function enqueueRun(database: DatabaseSync, {
         ready_at: readyAt.toISOString()
     });
 
-    return {
-        id: run.id
-    };
 }
 
 function findFirstActionRevision(database: DatabaseSync, slug: string): NextActionRevisionRow | null {

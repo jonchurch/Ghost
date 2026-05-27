@@ -107,7 +107,7 @@ export interface AutomationsRepository {
         memberEmail: string;
         memberId: string;
         slug: string;
-    }): Promise<{id: string} | null>;
+    }): Promise<void>;
     fetchAndLockSteps(limit: number): Promise<{
         steps: AutomationStepToRun[],
         nextStepReadyAt: null;

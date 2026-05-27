@@ -544,6 +544,12 @@ function getReadyAtForAction(action: Pick<NextActionRevisionRow, 'type' | 'wait_
         }) * HOUR_MS));
     case 'send_email':
         return now;
+    default: {
+        const _exhaustive: never = action.type;
+        throw new errors.IncorrectUsageError({
+            message: `Unexpected action type ${_exhaustive}`
+        });
+    }
     }
 }
 

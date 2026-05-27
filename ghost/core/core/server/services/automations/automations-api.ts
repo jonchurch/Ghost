@@ -6,6 +6,8 @@ import type {DatabaseSync} from 'node:sqlite';
 import {z} from 'zod';
 import {createFakeDatabaseAutomationsRepository} from './fake-database-automations-repository';
 import type {
+    AutomationStepTerminalStatus,
+    AutomationStepToRun,
     EditAutomationData
 } from './automations-repository';
 
@@ -238,8 +240,28 @@ function requestPoll() {
     domainEvents.dispatch(StartAutomationsPollEvent.create());
 }
 
-function getRepository() {
-    return repository;
+async function enqueueRun(data: {
+    memberEmail: string;
+    memberId: string;
+    slug: string;
+}) {
+    return await repository.enqueueRun(data);
+}
+
+async function fetchAndLockSteps(limit: number) {
+    return await repository.fetchAndLockSteps(limit);
+}
+
+async function finishStepAndEnqueueNext(step: AutomationStepToRun) {
+    return await repository.finishStepAndEnqueueNext(step);
+}
+
+async function markStepTerminal(step: AutomationStepToRun, status: AutomationStepTerminalStatus) {
+    return await repository.markStepTerminal(step, status);
+}
+
+async function retryStep(step: AutomationStepToRun, retryAt: Date) {
+    return await repository.retryStep(step, retryAt);
 }
 
 function _resetTestDatabase() {
@@ -252,7 +274,11 @@ module.exports = {
     _resetTestDatabase,
     browse,
     edit,
-    getRepository,
+    enqueueRun,
+    fetchAndLockSteps,
+    finishStepAndEnqueueNext,
+    markStepTerminal,
     read,
-    requestPoll
+    requestPoll,
+    retryStep
 };

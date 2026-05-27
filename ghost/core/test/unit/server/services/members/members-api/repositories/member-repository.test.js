@@ -1549,7 +1549,7 @@ describe('MemberRepository', function () {
         let MemberSubscribeEvent;
         let newslettersService;
         let Automation;
-        let automationsRepository;
+        let automationsApi;
         const oldNodeEnv = process.env.NODE_ENV;
 
         beforeEach(function () {
@@ -1607,7 +1607,7 @@ describe('MemberRepository', function () {
                 getAll: sinon.stub().resolves([])
             };
 
-            automationsRepository = {
+            automationsApi = {
                 enqueueRun: sinon.stub().resolves({id: 'new_automation_run_id'})
             };
 
@@ -1644,7 +1644,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 MemberSubscribeEventModel: MemberSubscribeEvent,
                 newslettersService,
-                automationsRepository,
+                automationsApi,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -1661,7 +1661,7 @@ describe('MemberRepository', function () {
             assert.equal(runCall.step_started_at, null);
             assert.equal(runCall.step_attempts, 0);
             assert.equal(runCall.exit_reason, null);
-            sinon.assert.calledOnceWithExactly(automationsRepository.enqueueRun, {
+            sinon.assert.calledOnceWithExactly(automationsApi.enqueueRun, {
                 memberEmail: 'test@example.com',
                 memberId: 'member_id_123',
                 slug: MEMBER_WELCOME_EMAIL_SLUGS.free
@@ -1676,7 +1676,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 MemberSubscribeEventModel: MemberSubscribeEvent,
                 newslettersService,
-                automationsRepository,
+                automationsApi,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -1689,11 +1689,11 @@ describe('MemberRepository', function () {
 
             for (const source of disallowedSources) {
                 WelcomeEmailAutomationRun.add.resetHistory();
-                automationsRepository.enqueueRun.resetHistory();
+                automationsApi.enqueueRun.resetHistory();
                 await repo.create({email: 'test@example.com', name: 'Test Member'}, {context: source.context});
                 await flushPromises();
                 sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
-                sinon.assert.notCalled(automationsRepository.enqueueRun);
+                sinon.assert.notCalled(automationsApi.enqueueRun);
             }
         });
 
@@ -1705,7 +1705,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 MemberSubscribeEventModel: MemberSubscribeEvent,
                 newslettersService,
-                automationsRepository,
+                automationsApi,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -1740,7 +1740,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 MemberSubscribeEventModel: MemberSubscribeEvent,
                 newslettersService,
-                automationsRepository,
+                automationsApi,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -1749,7 +1749,7 @@ describe('MemberRepository', function () {
             await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
-            sinon.assert.calledOnceWithExactly(automationsRepository.enqueueRun, {
+            sinon.assert.calledOnceWithExactly(automationsApi.enqueueRun, {
                 memberEmail: 'test@example.com',
                 memberId: 'member_id_123',
                 slug: MEMBER_WELCOME_EMAIL_SLUGS.free
@@ -1768,7 +1768,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 MemberSubscribeEventModel: MemberSubscribeEvent,
                 newslettersService,
-                automationsRepository,
+                automationsApi,
                 Automation,
                 StripeCustomer,
                 OfferRedemption: mockOfferRedemption
@@ -1814,7 +1814,7 @@ describe('MemberRepository', function () {
         let stripeAPIService;
         let productRepository;
         let Automation;
-        let automationsRepository;
+        let automationsApi;
         let subscriptionData;
 
         beforeEach(function () {
@@ -1960,7 +1960,7 @@ describe('MemberRepository', function () {
                 })
             };
 
-            automationsRepository = {
+            automationsApi = {
                 enqueueRun: sinon.stub().resolves({id: 'new_automation_run_id'})
             };
         });
@@ -1989,7 +1989,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 stripeAPIService,
                 productRepository,
-                automationsRepository,
+                automationsApi,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -2016,7 +2016,7 @@ describe('MemberRepository', function () {
             assert.equal(runCall.step_started_at, null);
             assert.equal(runCall.step_attempts, 0);
             assert.equal(runCall.exit_reason, null);
-            sinon.assert.calledOnceWithExactly(automationsRepository.enqueueRun, {
+            sinon.assert.calledOnceWithExactly(automationsApi.enqueueRun, {
                 memberEmail: 'test@example.com',
                 memberId: 'member_id_123',
                 slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
@@ -2043,7 +2043,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 stripeAPIService,
                 productRepository,
-                automationsRepository,
+                automationsApi,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -2058,7 +2058,7 @@ describe('MemberRepository', function () {
 
             for (const source of disallowedSources) {
                 WelcomeEmailAutomationRun.add.resetHistory();
-                automationsRepository.enqueueRun.resetHistory();
+                automationsApi.enqueueRun.resetHistory();
                 await repo.linkSubscription({
                     id: 'member_id_123',
                     subscription: subscriptionData
@@ -2070,7 +2070,7 @@ describe('MemberRepository', function () {
                 });
                 await flushPromises();
                 sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
-                sinon.assert.notCalled(automationsRepository.enqueueRun);
+                sinon.assert.notCalled(automationsApi.enqueueRun);
             }
         });
 
@@ -2112,7 +2112,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 stripeAPIService,
                 productRepository,
-                automationsRepository,
+                automationsApi,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -2131,7 +2131,7 @@ describe('MemberRepository', function () {
             await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
-            sinon.assert.calledOnceWithExactly(automationsRepository.enqueueRun, {
+            sinon.assert.calledOnceWithExactly(automationsApi.enqueueRun, {
                 memberEmail: 'test@example.com',
                 memberId: 'member_id_123',
                 slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
@@ -2158,7 +2158,7 @@ describe('MemberRepository', function () {
                 MemberStatusEvent,
                 stripeAPIService,
                 productRepository,
-                automationsRepository,
+                automationsApi,
                 Automation,
                 OfferRedemption: mockOfferRedemption
             });
@@ -2177,7 +2177,7 @@ describe('MemberRepository', function () {
             await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
-            sinon.assert.notCalled(automationsRepository.enqueueRun);
+            sinon.assert.notCalled(automationsApi.enqueueRun);
         });
     });
 

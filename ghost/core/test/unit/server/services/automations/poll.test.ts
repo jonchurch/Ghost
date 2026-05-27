@@ -9,14 +9,14 @@ const MAX_STEPS_PER_BATCH = 100;
 const RETRY_DELAY_MS = 10 * 60 * 1000;
 
 describe('automations poll', function () {
-    let automationsRepository;
+    let automationsApi;
     let memberWelcomeEmailService;
     let options;
 
     beforeEach(function () {
         sinon.useFakeTimers({now: new Date('2026-04-12T12:00:00.000Z'), shouldAdvanceTime: true});
 
-        automationsRepository = {
+        automationsApi = {
             fetchAndLockSteps: sinon.stub().resolves({steps: [], nextStepReadyAt: null}),
             finishStepAndEnqueueNext: sinon.stub().resolves(null),
             markStepTerminal: sinon.stub().resolves(true),
@@ -32,7 +32,7 @@ describe('automations poll', function () {
         };
 
         options = {
-            automationsRepository,
+            automationsApi,
             enqueueAnotherPollAt: sinon.stub(),
             memberWelcomeEmailService
         };
@@ -97,14 +97,14 @@ describe('automations poll', function () {
     it('does nothing when no steps are ready', async function () {
         await poll(options);
 
-        sinon.assert.calledOnceWithExactly(automationsRepository.fetchAndLockSteps, MAX_STEPS_PER_BATCH);
+        sinon.assert.calledOnceWithExactly(automationsApi.fetchAndLockSteps, MAX_STEPS_PER_BATCH);
         sinon.assert.notCalled(options.enqueueAnotherPollAt);
         sinon.assert.notCalled(memberWelcomeEmailService.init);
     });
 
     it('enqueues the next future poll when no steps are ready', async function () {
         const nextStepReadyAt = new Date(Date.now() + 60 * 1000);
-        automationsRepository.fetchAndLockSteps.resolves({steps: [], nextStepReadyAt});
+        automationsApi.fetchAndLockSteps.resolves({steps: [], nextStepReadyAt});
 
         await poll(options);
 
@@ -115,19 +115,19 @@ describe('automations poll', function () {
     it('keeps processing other steps if one rejects', async function () {
         const step1 = buildStep({id: 'step-1'});
         const step2 = buildStep({id: 'step-2'});
-        automationsRepository.fetchAndLockSteps.resolves({steps: [step1, step2], nextStepReadyAt: null});
-        automationsRepository.finishStepAndEnqueueNext.withArgs(step1).rejects(new Error('finish failed'));
-        automationsRepository.finishStepAndEnqueueNext.withArgs(step2).resolves(null);
+        automationsApi.fetchAndLockSteps.resolves({steps: [step1, step2], nextStepReadyAt: null});
+        automationsApi.finishStepAndEnqueueNext.withArgs(step1).rejects(new Error('finish failed'));
+        automationsApi.finishStepAndEnqueueNext.withArgs(step2).resolves(null);
 
         await poll(options);
 
-        sinon.assert.calledWith(automationsRepository.finishStepAndEnqueueNext, step1);
-        sinon.assert.calledWith(automationsRepository.finishStepAndEnqueueNext, step2);
+        sinon.assert.calledWith(automationsApi.finishStepAndEnqueueNext, step1);
+        sinon.assert.calledWith(automationsApi.finishStepAndEnqueueNext, step2);
     });
 
     it('enqueues another immediate poll when the batch is full', async function () {
         const beforePoll = new Date();
-        automationsRepository.fetchAndLockSteps.resolves({
+        automationsApi.fetchAndLockSteps.resolves({
             steps: Array.from({length: MAX_STEPS_PER_BATCH}, () => buildStep()),
             nextStepReadyAt: null
         });
@@ -143,51 +143,51 @@ describe('automations poll', function () {
 
     it('marks the step failed without sending when max attempts are exceeded', async function () {
         const step = buildEmailStep({step_attempts: 11});
-        automationsRepository.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
+        automationsApi.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
 
         await poll(options);
 
         sinon.assert.notCalled(memberWelcomeEmailService.api.sendAutomationEmail);
-        sinon.assert.calledOnceWithExactly(automationsRepository.markStepTerminal, step, 'email send failed');
+        sinon.assert.calledOnceWithExactly(automationsApi.markStepTerminal, step, 'email send failed');
     });
 
     it('bails if the automation is inactive', async function () {
         const step = buildEmailStep({automation_status: 'inactive'});
-        automationsRepository.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
+        automationsApi.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
 
         await poll(options);
 
         sinon.assert.notCalled(memberWelcomeEmailService.api.sendAutomationEmail);
-        sinon.assert.calledOnceWithExactly(automationsRepository.markStepTerminal, step, 'automation disabled');
+        sinon.assert.calledOnceWithExactly(automationsApi.markStepTerminal, step, 'automation disabled');
     });
 
     it('bails if the member no longer exists', async function () {
         const step = buildEmailStep();
-        automationsRepository.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
+        automationsApi.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
         Member.findOne.resolves(null);
 
         await poll(options);
 
         sinon.assert.notCalled(memberWelcomeEmailService.api.sendAutomationEmail);
-        sinon.assert.calledOnceWithExactly(automationsRepository.markStepTerminal, step, 'member unsubscribed');
+        sinon.assert.calledOnceWithExactly(automationsApi.markStepTerminal, step, 'member unsubscribed');
     });
 
     it('bails if the member status changed', async function () {
         const step = buildEmailStep();
-        automationsRepository.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
+        automationsApi.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
         Member.findOne.resolves(buildMember({status: 'paid'}));
 
         await poll(options);
 
         sinon.assert.notCalled(memberWelcomeEmailService.api.sendAutomationEmail);
-        sinon.assert.calledOnceWithExactly(automationsRepository.markStepTerminal, step, 'member changed status');
+        sinon.assert.calledOnceWithExactly(automationsApi.markStepTerminal, step, 'member changed status');
     });
 
     it('allows paid welcome emails for gift members', async function () {
         const step = buildEmailStep({
             automation_slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
         });
-        automationsRepository.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
+        automationsApi.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
         Member.findOne.resolves(buildMember({status: 'gift'}));
 
         await poll(options);
@@ -195,7 +195,7 @@ describe('automations poll', function () {
         sinon.assert.calledOnceWithExactly(memberWelcomeEmailService.api.sendAutomationEmail, sinon.match({
             memberStatus: 'paid'
         }));
-        sinon.assert.calledOnceWithExactly(automationsRepository.finishStepAndEnqueueNext, step);
+        sinon.assert.calledOnceWithExactly(automationsApi.finishStepAndEnqueueNext, step);
     });
 
     it('sends email revision content and enqueues the next step', async function () {
@@ -206,8 +206,8 @@ describe('automations poll', function () {
             email_sender_name: 'Sender',
             email_sender_reply_to: 'reply@example.com'
         });
-        automationsRepository.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
-        automationsRepository.finishStepAndEnqueueNext.resolves(nextReadyAt);
+        automationsApi.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
+        automationsApi.finishStepAndEnqueueNext.resolves(nextReadyAt);
 
         await poll(options);
 
@@ -229,25 +229,25 @@ describe('automations poll', function () {
     it('retries email send failures', async function () {
         const step = buildEmailStep({step_attempts: 1});
         const pollStart = Date.now();
-        automationsRepository.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
+        automationsApi.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
         memberWelcomeEmailService.api.sendAutomationEmail.rejects(new Error('send failed'));
 
         await poll(options);
 
-        const retryAt = automationsRepository.retryStep.firstCall.args[1];
+        const retryAt = automationsApi.retryStep.firstCall.args[1];
         assert.ok(Math.abs(retryAt.getTime() - (pollStart + RETRY_DELAY_MS)) < 2000);
-        sinon.assert.calledOnceWithExactly(automationsRepository.retryStep, step, retryAt);
+        sinon.assert.calledOnceWithExactly(automationsApi.retryStep, step, retryAt);
         sinon.assert.calledOnceWithExactly(options.enqueueAnotherPollAt, retryAt);
     });
 
     it('permanently fails email send failures at the attempt limit', async function () {
         const step = buildEmailStep({step_attempts: 10});
-        automationsRepository.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
+        automationsApi.fetchAndLockSteps.resolves({steps: [step], nextStepReadyAt: null});
         memberWelcomeEmailService.api.sendAutomationEmail.rejects(new Error('send failed'));
 
         await poll(options);
 
-        sinon.assert.notCalled(automationsRepository.retryStep);
-        sinon.assert.calledOnceWithExactly(automationsRepository.markStepTerminal, step, 'email send failed');
+        sinon.assert.notCalled(automationsApi.retryStep);
+        sinon.assert.calledOnceWithExactly(automationsApi.markStepTerminal, step, 'email send failed');
     });
 });

@@ -36,7 +36,12 @@ type MemberModel = {
 };
 
 type PollOptions = {
-    automationsRepository: AutomationsRepository;
+    automationsApi: Pick<AutomationsRepository,
+        'fetchAndLockSteps' |
+        'finishStepAndEnqueueNext' |
+        'markStepTerminal' |
+        'retryStep'
+    >;
     enqueueAnotherPollAt: (date: Readonly<Date>) => unknown;
     memberWelcomeEmailService: MemberWelcomeEmailService;
 };
@@ -45,8 +50,8 @@ const slugToMemberStatus = new Map<string, 'free' | 'paid'>(
     Object.entries(MEMBER_WELCOME_EMAIL_SLUGS).map(([status, slug]) => [slug as string, status as 'free' | 'paid'])
 );
 
-const markMaxAttemptsExceeded = async (automationsRepository: AutomationsRepository, step: AutomationStepToRun): Promise<void> => {
-    await automationsRepository.markStepTerminal(step, 'email send failed');
+const markMaxAttemptsExceeded = async (automationsApi: PollOptions['automationsApi'], step: AutomationStepToRun): Promise<void> => {
+    await automationsApi.markStepTerminal(step, 'email send failed');
     logging.warn({
         system: {
             event: 'automations.poll.max_attempts',
@@ -56,7 +61,7 @@ const markMaxAttemptsExceeded = async (automationsRepository: AutomationsReposit
 };
 
 const processStep = async ({
-    automationsRepository,
+    automationsApi,
     enqueueAnotherPollAt,
     memberWelcomeEmailService,
     step
@@ -64,12 +69,12 @@ const processStep = async ({
     step: AutomationStepToRun;
 }>): Promise<void> => {
     if (step.step_attempts > MAX_ATTEMPTS) {
-        await markMaxAttemptsExceeded(automationsRepository, step);
+        await markMaxAttemptsExceeded(automationsApi, step);
         return;
     }
 
     if (step.automation_status !== 'active') {
-        await automationsRepository.markStepTerminal(step, 'automation disabled');
+        await automationsApi.markStepTerminal(step, 'automation disabled');
         return;
     }
 
@@ -83,31 +88,31 @@ const processStep = async ({
             }
         }, `[AUTOMATIONS] Unknown automation slug: ${step.automation_slug}`);
 
-        await automationsRepository.markStepTerminal(step, 'email send failed');
+        await automationsApi.markStepTerminal(step, 'email send failed');
         return;
     }
 
     if (!step.member_id) {
-        await automationsRepository.markStepTerminal(step, 'member unsubscribed');
+        await automationsApi.markStepTerminal(step, 'member unsubscribed');
         return;
     }
 
     const member = await Member.findOne({id: step.member_id}) as MemberModel | null;
 
     if (!member) {
-        await automationsRepository.markStepTerminal(step, 'member unsubscribed');
+        await automationsApi.markStepTerminal(step, 'member unsubscribed');
         return;
     }
 
     const eligibleStatuses = MEMBER_WELCOME_EMAIL_ELIGIBLE_STATUSES[memberStatus] as readonly string[];
     if (!eligibleStatuses.includes(member.get('status') ?? '')) {
-        await automationsRepository.markStepTerminal(step, 'member changed status');
+        await automationsApi.markStepTerminal(step, 'member changed status');
         return;
     }
 
     switch (step.type) {
     case 'wait': {
-        const nextReadyAt = await automationsRepository.finishStepAndEnqueueNext(step);
+        const nextReadyAt = await automationsApi.finishStepAndEnqueueNext(step);
 
         if (nextReadyAt) {
             enqueueAnotherPollAt(nextReadyAt);
@@ -134,7 +139,7 @@ const processStep = async ({
                 memberStatus
             });
 
-            const nextReadyAt = await automationsRepository.finishStepAndEnqueueNext(step);
+            const nextReadyAt = await automationsApi.finishStepAndEnqueueNext(step);
 
             if (nextReadyAt) {
                 enqueueAnotherPollAt(nextReadyAt);
@@ -150,13 +155,13 @@ const processStep = async ({
 
             if (step.step_attempts < MAX_ATTEMPTS) {
                 const retryAt = new Date(Date.now() + RETRY_DELAY_MS);
-                const didRetry = await automationsRepository.retryStep(step, retryAt);
+                const didRetry = await automationsApi.retryStep(step, retryAt);
 
                 if (didRetry) {
                     enqueueAnotherPollAt(retryAt);
                 }
             } else {
-                await markMaxAttemptsExceeded(automationsRepository, step);
+                await markMaxAttemptsExceeded(automationsApi, step);
             }
         }
 
@@ -172,7 +177,7 @@ const processStep = async ({
  * again is dispatched.
  */
 export const poll = async ({
-    automationsRepository,
+    automationsApi,
     enqueueAnotherPollAt,
     memberWelcomeEmailService
 }: Readonly<PollOptions>): Promise<void> => {
@@ -184,7 +189,7 @@ export const poll = async ({
         return;
     }
 
-    const {steps, nextStepReadyAt} = await automationsRepository.fetchAndLockSteps(MAX_STEPS_PER_BATCH);
+    const {steps, nextStepReadyAt} = await automationsApi.fetchAndLockSteps(MAX_STEPS_PER_BATCH);
 
     if (steps.length === 0) {
         if (nextStepReadyAt) {
@@ -200,7 +205,7 @@ export const poll = async ({
 
     const results = await Promise.allSettled(steps.map(async (step) => {
         await processStep({
-            automationsRepository,
+            automationsApi,
             enqueueAnotherPollAt,
             memberWelcomeEmailService,
             step

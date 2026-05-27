@@ -105,7 +105,7 @@ module.exports = function MembersAPI({
         tokenService,
         newslettersService,
         productRepository,
-        automationsRepository: automationsApi.getRepository(),
+        automationsApi,
         Automation,
         WelcomeEmailAutomationRun,
         Member,

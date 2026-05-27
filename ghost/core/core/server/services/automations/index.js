@@ -63,7 +63,7 @@ class AutomationsService {
         };
 
         domainEvents.subscribe(StartAutomationsPollEvent, oneAtATime(async () => poll({
-            automationsRepository: automationsApi.getRepository(),
+            automationsApi,
             memberWelcomeEmailService,
             enqueueAnotherPollAt: enqueuePollAt
         })));

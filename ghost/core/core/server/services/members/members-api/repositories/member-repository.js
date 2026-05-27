@@ -66,7 +66,7 @@ module.exports = class MemberRepository {
      * @param {any} deps.offersAPI
      * @param {ITokenService} deps.tokenService
      * @param {any} deps.newslettersService
-     * @param {import('../../../automations/automations-repository').AutomationsRepository} deps.automationsRepository
+     * @param {typeof import('../../../automations/automations-api')} deps.automationsApi
      * @param {any} deps.Automation
      * @param {any} deps.WelcomeEmailAutomationRun
      */
@@ -88,7 +88,7 @@ module.exports = class MemberRepository {
         offersAPI,
         tokenService,
         newslettersService,
-        automationsRepository,
+        automationsApi,
         Automation,
         WelcomeEmailAutomationRun
     }) {
@@ -109,7 +109,7 @@ module.exports = class MemberRepository {
         this._offersAPI = offersAPI;
         this.tokenService = tokenService;
         this._newslettersService = newslettersService;
-        this._automationsRepository = automationsRepository;
+        this._automationsApi = automationsApi;
         this._Automation = Automation;
         this._WelcomeEmailAutomationRun = WelcomeEmailAutomationRun;
 
@@ -234,7 +234,7 @@ module.exports = class MemberRepository {
     }
 
     async enqueueAutomationsWelcomeEmailRun(memberId, slug, options = {}) {
-        if (!this._automationsRepository) {
+        if (!this._automationsApi) {
             return null;
         }
 
@@ -257,7 +257,7 @@ module.exports = class MemberRepository {
                 return null;
             }
 
-            return this._automationsRepository.enqueueRun({
+            return this._automationsApi.enqueueRun({
                 memberEmail,
                 memberId,
                 slug

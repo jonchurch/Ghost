@@ -234,10 +234,6 @@ module.exports = class MemberRepository {
     }
 
     async enqueueAutomationsWelcomeEmailRun(memberId, slug, options = {}) {
-        if (!this._automationsApi) {
-            return null;
-        }
-
         const enqueue = async () => {
             let memberEmail = options.memberEmail;
 

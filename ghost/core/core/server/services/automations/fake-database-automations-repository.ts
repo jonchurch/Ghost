@@ -206,13 +206,12 @@ function fetchAndLockSteps(database: DatabaseSync, limit: number): {
     const candidates = database.prepare(`
         SELECT id
         FROM automation_run_steps
-        WHERE (
-            status = 'pending'
+        WHERE status = 'pending'
             AND ready_at <= ?
-        ) OR (
-            status = 'running'
-            AND locked_at < ?
-        )
+            AND (
+                locked_by IS NULL
+                OR locked_at < ?
+            )
         ORDER BY ready_at, created_at, id
         LIMIT ?
     `).all(nowString, staleLockCutoff, limit) as unknown as Array<{id: string}>;
@@ -230,22 +229,18 @@ function fetchAndLockSteps(database: DatabaseSync, limit: number): {
 
     database.prepare(`
         UPDATE automation_run_steps
-        SET status = 'running',
-            locked_by = ?,
+        SET locked_by = ?,
             locked_at = ?,
             started_at = ?,
             finished_at = NULL,
             updated_at = ?,
             step_attempts = step_attempts + 1
         WHERE id IN (${placeholders})
+            AND status = 'pending'
+            AND ready_at <= ?
             AND (
-                (
-                    status = 'pending'
-                    AND ready_at <= ?
-                ) OR (
-                    status = 'running'
-                    AND locked_at < ?
-                )
+                locked_by IS NULL
+                OR locked_at < ?
             )
     `).run(lockId, nowString, nowString, nowString, ...candidateIds, nowString, staleLockCutoff);
 
@@ -277,7 +272,7 @@ function fetchAndLockSteps(database: DatabaseSync, limit: number): {
         INNER JOIN automation_action_revisions revision ON revision.id = step.automation_action_revision_id
         INNER JOIN automation_actions action ON action.id = revision.action_id
         WHERE step.id IN (${placeholders})
-            AND step.status = 'running'
+            AND step.status = 'pending'
             AND step.locked_by = ?
         ORDER BY step.ready_at, step.created_at, step.id
     `).all(...candidateIds, lockId) as unknown as StepRow[];
@@ -569,7 +564,7 @@ function updateLockedStep(database: DatabaseSync, step: AutomationStepToRun, att
             locked_by = CASE WHEN :clear_lock THEN NULL ELSE locked_by END,
             locked_at = CASE WHEN :clear_lock THEN NULL ELSE locked_at END
         WHERE id = :id
-            AND status = 'running'
+            AND status = 'pending'
             AND locked_by = :locked_by
     `).run({
         id: step.id,

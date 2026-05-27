@@ -186,7 +186,7 @@ describe('fake database automations repository', function () {
         assert.deepEqual(listSteps(), []);
     });
 
-    it('locks ready pending and stale running steps, but skips future and fresh running steps', async function () {
+    it('locks ready pending and stale locked steps, but skips future and fresh locked steps', async function () {
         const automation = getAutomation();
         const action = getActionByIndex(automation.id, 0);
         const run = insertRun(automation.id);
@@ -196,7 +196,6 @@ describe('fake database automations repository', function () {
         const stale = insertStep(run.id, action.revision_id, {
             locked_at: new Date(Date.now() - (31 * 60 * 1000)).toISOString(),
             ready_at: new Date(Date.now() - 1000).toISOString(),
-            status: 'running',
             locked_by: 'old-lock',
             step_attempts: 2
         });
@@ -206,7 +205,6 @@ describe('fake database automations repository', function () {
         insertStep(run.id, action.revision_id, {
             locked_at: new Date(Date.now() - (29 * 60 * 1000)).toISOString(),
             ready_at: new Date(Date.now() - 1000).toISOString(),
-            status: 'running',
             locked_by: 'fresh-lock'
         });
 
@@ -216,13 +214,13 @@ describe('fake database automations repository', function () {
         assert.equal(result.nextStepReadyAt, null);
 
         const lockedReady = getStep(ready.id);
-        assert.equal(lockedReady.status, 'running');
+        assert.equal(lockedReady.status, 'pending');
         assert.equal(lockedReady.step_attempts, 1);
         assert.equal(typeof lockedReady.locked_by, 'string');
         assert.equal(lockedReady.locked_by, result.steps[0].locked_by);
 
         const lockedStale = getStep(stale.id);
-        assert.equal(lockedStale.status, 'running');
+        assert.equal(lockedStale.status, 'pending');
         assert.equal(lockedStale.step_attempts, 3);
         assert.equal(lockedStale.locked_by, result.steps[0].locked_by);
     });
@@ -307,7 +305,7 @@ describe('fake database automations repository', function () {
         assert.equal(await repository.retryStep(step, new Date(Date.now() + 1000)), false);
 
         const unchanged = getStep(step.id);
-        assert.equal(unchanged.status, 'running');
+        assert.equal(unchanged.status, 'pending');
         assert.equal(unchanged.locked_by, 'other-lock');
     });
 });

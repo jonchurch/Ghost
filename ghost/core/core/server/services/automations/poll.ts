@@ -121,6 +121,8 @@ const processStep = async ({
         return;
     }
     case 'send_email': {
+        memberWelcomeEmailService.init();
+
         try {
             await memberWelcomeEmailService.api.sendAutomationEmail({
                 email: {
@@ -196,11 +198,6 @@ export const poll = async ({
             enqueueAnotherPollAt(nextStepReadyAt);
         }
         return;
-    }
-
-    const hasEmailSteps = steps.some(step => step.type === 'send_email');
-    if (hasEmailSteps) {
-        memberWelcomeEmailService.init();
     }
 
     const results = await Promise.allSettled(steps.map(async (step) => {

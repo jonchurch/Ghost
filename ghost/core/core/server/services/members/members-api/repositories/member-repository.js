@@ -179,12 +179,12 @@ module.exports = class MemberRepository {
     /**
      * Looks up the active welcome email automation for the given slug and enqueues a
      * `WelcomeEmailAutomationRun` for the member. Dispatches `StartAutomationsPollEvent`
-     * so the poll picks it up.
+     * when a legacy welcome email automation run is created so the poll picks it up.
      *
      * Callers are responsible for any eligibility gating (member status, source, etc.)
      * before calling this — this helper just looks up + inserts + dispatches. Pass
-     * `options.transacting` to run the insert inside an existing transaction; the
-     * dispatch is automatically deferred until that transaction commits.
+     * `options.transacting` to run the legacy insert inside an existing transaction;
+     * that legacy dispatch is automatically deferred until the transaction commits.
      *
      * @param {string} memberId
      * @param {string} slug automation slug, see MEMBER_WELCOME_EMAIL_SLUGS
@@ -220,13 +220,10 @@ module.exports = class MemberRepository {
             }
         }
 
-        const newRunEnqueued = await this.enqueueAutomationsWelcomeEmailRun(memberId, slug, {
-            ...options,
-            dispatchPollOnSuccess: !legacyRun
-        });
+        await this.enqueueAutomationsWelcomeEmailRun(memberId, slug, options);
 
-        if (legacyRun || newRunEnqueued) {
-            this.dispatchEvent(StartAutomationsPollEvent.create(), legacyRun ? options : {});
+        if (legacyRun) {
+            this.dispatchEvent(StartAutomationsPollEvent.create(), options);
         }
 
         return legacyRun;
@@ -262,11 +259,7 @@ module.exports = class MemberRepository {
         };
 
         if (options?.transacting) {
-            options.transacting.executionPromise.then(enqueue).then((enqueued) => {
-                if (enqueued && options.dispatchPollOnSuccess) {
-                    DomainEvents.dispatch(StartAutomationsPollEvent.create());
-                }
-            }).catch((err) => {
+            options.transacting.executionPromise.then(enqueue).catch((err) => {
                 logging.error({
                     err,
                     message: `Error enqueuing new automation run for member ${memberId} after transaction finished`

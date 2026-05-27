@@ -241,6 +241,7 @@ function requestPoll() {
 
 async function enqueueRun(...args: Parameters<AutomationsRepository['enqueueRun']>) {
     await repository.enqueueRun(...args);
+    requestPoll();
 }
 
 async function fetchAndLockSteps(...args: Parameters<AutomationsRepository['fetchAndLockSteps']>) {

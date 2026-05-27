@@ -1,14 +1,14 @@
 const assert = require('node:assert/strict');
 const sinon = require('sinon');
 
-const {poll} = require('../../../../../core/server/services/automations/neopoll');
+const {poll} = require('../../../../../core/server/services/automations/poll');
 const {Member} = require('../../../../../core/server/models');
 const {MEMBER_WELCOME_EMAIL_SLUGS} = require('../../../../../core/server/services/member-welcome-emails/constants');
 
 const MAX_STEPS_PER_BATCH = 100;
 const RETRY_DELAY_MS = 10 * 60 * 1000;
 
-describe('automations neopoll', function () {
+describe('automations poll', function () {
     let automationsRepository;
     let memberWelcomeEmailService;
     let options;

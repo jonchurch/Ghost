@@ -221,7 +221,7 @@ module.exports = class MemberRepository {
             }
         }
 
-        const newRun = await this.enqueueNeopollWelcomeEmailRun(memberId, slug, {
+        const newRun = await this.enqueueAutomationsWelcomeEmailRun(memberId, slug, {
             ...options,
             dispatchPollOnSuccess: !legacyRun
         });
@@ -233,7 +233,7 @@ module.exports = class MemberRepository {
         return legacyRun ?? newRun;
     }
 
-    async enqueueNeopollWelcomeEmailRun(memberId, slug, options = {}) {
+    async enqueueAutomationsWelcomeEmailRun(memberId, slug, options = {}) {
         if (!this._automationsRepository) {
             return null;
         }
@@ -249,7 +249,7 @@ module.exports = class MemberRepository {
             if (!memberEmail) {
                 logging.warn({
                     system: {
-                        event: 'automations.neopoll.member_email_missing',
+                        event: 'automations.poll.member_email_missing',
                         member_id: memberId,
                         slug
                     }

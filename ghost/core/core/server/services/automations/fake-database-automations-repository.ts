@@ -531,7 +531,7 @@ function findNextActionRevision(database: DatabaseSync, sourceActionId: string):
 function getReadyAtForAction(action: Pick<NextActionRevisionRow, 'type' | 'wait_hours'>, now: Date): Date {
     switch (action.type) {
     case 'wait':
-        return new Date(now.getTime() + (requireValue(action.wait_hours, 'wait_hours', {
+        return new Date(now.getTime() + (requireValue({
             id: action.type,
             type: action.type,
             wait_hours: action.wait_hours,
@@ -541,7 +541,7 @@ function getReadyAtForAction(action: Pick<NextActionRevisionRow, 'type' | 'wait_
             email_sender_email: null,
             email_sender_reply_to: null,
             email_design_setting_id: null
-        }) * HOUR_MS));
+        }, 'wait_hours') * HOUR_MS));
     case 'send_email':
         return now;
     default: {
@@ -611,14 +611,14 @@ function buildStepToRun(row: StepRow): AutomationStepToRun {
         return {
             ...base,
             type: 'wait',
-            wait_hours: requireValue(row.wait_hours, 'wait_hours', row)
+            wait_hours: requireValue(row, 'wait_hours')
         };
     case 'send_email':
         return {
             ...base,
             type: 'send_email',
-            email_subject: requireValue(row.email_subject, 'email_subject', row),
-            email_lexical: requireValue(row.email_lexical, 'email_lexical', row),
+            email_subject: requireValue(row, 'email_subject'),
+            email_lexical: requireValue(row, 'email_lexical'),
             email_sender_name: row.email_sender_name,
             email_sender_email: row.email_sender_email,
             email_sender_reply_to: row.email_sender_reply_to,

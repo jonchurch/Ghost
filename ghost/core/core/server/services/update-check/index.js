@@ -7,10 +7,13 @@ const config = require('../../../shared/config');
 const urlUtils = require('../../../shared/url-utils');
 const jobsService = require('../jobs');
 const databaseInfo = require('../../data/db/info');
+const models = require('../../models');
 
 const request = require('@tryghost/request');
 const ghostVersion = require('@tryghost/version');
 const UpdateCheckService = require('./update-check-service');
+const {NotificationEmailService} = require('../notifications/notification-email');
+const {getAdminEmails} = require('../notifications/recipients');
 
 /**
  * Initializes and triggers update check
@@ -34,8 +37,19 @@ module.exports = async ({
         }
     }
 
-    const {GhostMailer} = require('../mail');
-    const ghostMailer = new GhostMailer();
+    const mailService = require('../mail');
+    const ghostMailer = new mailService.GhostMailer();
+
+    const notificationEmailService = new NotificationEmailService({
+        mailer: ghostMailer,
+        generateEmailContent: mailService.utils.generateContent,
+        getSiteUrl: () => urlUtils.urlFor('home', true)
+    });
+
+    const notifyAdmins = async ({subject, content}) => {
+        const to = await getAdminEmails(models.User);
+        await notificationEmailService.send({to, subject, content});
+    };
 
     const updateChecker = new UpdateCheckService({
         api: {
@@ -66,7 +80,7 @@ module.exports = async ({
             rethrowErrors
         },
         request,
-        sendEmail: ghostMailer.send.bind(ghostMailer)
+        notifyAdmins
     });
 
     await updateChecker.check();

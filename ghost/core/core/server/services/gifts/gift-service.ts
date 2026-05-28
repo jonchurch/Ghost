@@ -6,7 +6,6 @@ import type {GiftRepository} from './gift-repository';
 import type {GiftReminderScheduler} from './gift-reminder-scheduler';
 import tpl from '@tryghost/tpl';
 import {GIFT_REMINDER_FLOOR_DAYS, GIFT_REMINDER_LEAD_DAYS} from './constants';
-import {MEMBER_WELCOME_EMAIL_SLUGS} from '../member-welcome-emails/constants';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const GIFT_REMINDER_LEAD_MS = GIFT_REMINDER_LEAD_DAYS * MS_PER_DAY;
@@ -39,11 +38,12 @@ interface MemberModel {
 interface MemberRepository {
     get(filter: Record<string, unknown>, options?: Record<string, unknown>): Promise<MemberModel | null>;
     update(data: Record<string, unknown>, options?: Record<string, unknown>): Promise<unknown>;
-    enqueueWelcomeEmailRun(data: {
-        memberId: string;
-        memberEmail: string;
-        slug: string;
-    }, options?: Record<string, unknown>): Promise<unknown>;
+    triggerMemberSignupAutomation(
+        memberId: string,
+        memberEmail: string,
+        memberStatus: 'free' | 'paid',
+        options?: Record<string, unknown>
+    ): Promise<unknown>;
 }
 
 type Tier = {
@@ -311,11 +311,12 @@ export class GiftService {
             await this.deps.giftRepository.update(redeemed, {transacting});
 
             // Gift members receive the paid welcome email, as they receive access to paid content
-            await this.deps.memberRepository.enqueueWelcomeEmailRun({
+            await this.deps.memberRepository.triggerMemberSignupAutomation(
                 memberId,
-                memberEmail: member.get('email'),
-                slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
-            }, {transacting});
+                member.get('email'),
+                'paid',
+                {transacting}
+            );
 
             return {redeemed, member};
         };

@@ -245,7 +245,7 @@ module.exports = class MemberRepository {
      */
     async triggerMemberSignupAutomation(memberId, memberEmail, memberStatus, bookshelfOptions) {
         await Promise.all([
-            this.#triggerMemberSignupAutomation(memberId, memberEmail, memberStatus, bookshelfOptions),
+            this.#triggerMemberSignupAutomation(memberId, memberEmail, memberStatus),
             this.#triggerMemberSignupLegacyAutomation(memberId, memberStatus, bookshelfOptions)
         ]);
     }

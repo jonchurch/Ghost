@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const hasActiveOffer = require('../utils/has-active-offer');
 const StartAutomationsPollEvent = require('../../../automations/events/start-automations-poll-event');
 /** @import {Knex} from 'knex' */
+/** @import * as automationsApi from '../../../automations/automations-api' */
 
 const messages = {
     noStripeConnection: 'Cannot {action} without a Stripe Connection',
@@ -66,7 +67,7 @@ module.exports = class MemberRepository {
      * @param {any} deps.offersAPI
      * @param {ITokenService} deps.tokenService
      * @param {any} deps.newslettersService
-     * @param {typeof import('../../../automations/automations-api')} deps.automationsApi
+     * @param {Pick<automationsApi, 'trigger'>} deps.automationsApi
      * @param {any} deps.Automation
      * @param {any} deps.WelcomeEmailAutomationRun
      */

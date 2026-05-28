@@ -11,12 +11,21 @@ const mockOfferRedemption = {
     findOne: sinon.stub()
 };
 
+// TODO: Destroy this
 const flushPromises = async () => {
     await Promise.resolve();
     await Promise.resolve();
 };
 
 describe('MemberRepository', function () {
+    let automationsApi;
+
+    beforeEach(function () {
+        automationsApi = {
+            trigger: sinon.stub().resolves()
+        };
+    });
+
     afterEach(function () {
         sinon.restore();
     });
@@ -1549,7 +1558,6 @@ describe('MemberRepository', function () {
         let MemberSubscribeEvent;
         let newslettersService;
         let Automation;
-        let automationsApi;
         const oldNodeEnv = process.env.NODE_ENV;
 
         beforeEach(function () {
@@ -1605,10 +1613,6 @@ describe('MemberRepository', function () {
             newslettersService = {
                 getDefaultNewsletters: sinon.stub().resolves([]),
                 getAll: sinon.stub().resolves([])
-            };
-
-            automationsApi = {
-                trigger: sinon.stub().resolves()
             };
 
             Automation = {
@@ -1814,7 +1818,6 @@ describe('MemberRepository', function () {
         let stripeAPIService;
         let productRepository;
         let Automation;
-        let automationsApi;
         let subscriptionData;
 
         beforeEach(function () {
@@ -1958,10 +1961,6 @@ describe('MemberRepository', function () {
                         };
                     })
                 })
-            };
-
-            automationsApi = {
-                trigger: sinon.stub().resolves()
             };
         });
 
@@ -2132,9 +2131,10 @@ describe('MemberRepository', function () {
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
             sinon.assert.calledOnceWithExactly(automationsApi.trigger, {
-                memberEmail: 'test@example.com',
+                event: 'member_sign_up',
                 memberId: 'member_id_123',
-                slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
+                memberEmail: 'test@example.com',
+                memberStatus: 'paid'
             });
         });
 
@@ -2236,6 +2236,7 @@ describe('MemberRepository', function () {
             MemberStatusEvent,
             MemberSubscribeEventModel: MemberSubscribeEvent,
             newslettersService,
+            automationsApi,
             Automation,
             productRepository,
             OfferRedemption: mockOfferRedemption

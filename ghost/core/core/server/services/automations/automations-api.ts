@@ -239,7 +239,8 @@ function requestPoll() {
     domainEvents.dispatch(StartAutomationsPollEvent.create());
 }
 
-async function enqueueRun(...args: Parameters<AutomationsRepository['enqueueRun']>) {
+export async function enqueueRun(...args: Parameters<AutomationsRepository['enqueueRun']>) {
+    // TODO: Only do this in development/testing
     await repository.enqueueRun(...args);
     requestPoll();
 }
@@ -266,6 +267,7 @@ function _resetTestDatabase() {
     }
 }
 
+// TODO: Destroy this
 module.exports = {
     _resetTestDatabase,
     browse,

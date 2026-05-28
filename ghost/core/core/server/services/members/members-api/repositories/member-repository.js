@@ -10,7 +10,7 @@ const validator = require('@tryghost/validator');
 const crypto = require('crypto');
 const hasActiveOffer = require('../utils/has-active-offer');
 const StartAutomationsPollEvent = require('../../../automations/events/start-automations-poll-event');
-const {MEMBER_WELCOME_EMAIL_SLUGS} = require('../../../member-welcome-emails/constants');
+/** @import {Knex} from 'knex' */
 
 const messages = {
     noStripeConnection: 'Cannot {action} without a Stripe Connection',
@@ -177,88 +177,78 @@ module.exports = class MemberRepository {
     }
 
     /**
-     * Looks up the active welcome email automation for the given slug and enqueues a
-     * `WelcomeEmailAutomationRun` for the member. Dispatches `StartAutomationsPollEvent`
-     * when a legacy welcome email automation run is created so the poll picks it up.
-     *
-     * Callers are responsible for any eligibility gating (member status, source, etc.)
-     * before calling this — this helper just looks up + inserts + dispatches. Pass
-     * `options.transacting` to run the legacy insert inside an existing transaction;
-     * that legacy dispatch is automatically deferred until the transaction commits.
-     *
-     * @param {object} data
-     * @param {string} data.memberId
-     * @param {string} data.memberEmail
-     * @param {string} data.slug automation slug, see MEMBER_WELCOME_EMAIL_SLUGS
-     * @param {object} [options] bookshelf options (transacting, context, etc.)
+     * @param {string} memberId
+     * @param {string} memberEmail
+     * @param {'free' | 'paid'} memberStatus
+     * @returns {Promise<void>}
      */
-    async enqueueWelcomeEmailRun({memberId, memberEmail, slug}, options = {}) {
-        let legacyRun = null;
-
-        if (this._Automation && this._WelcomeEmailAutomationRun) {
-            const automation = await this._Automation.findOne(
-                {slug},
-                {...options, withRelated: ['welcomeEmailAutomatedEmail']}
-            );
-            const email = automation?.related('welcomeEmailAutomatedEmail');
-            const isActive = Boolean(
-                automation &&
-                email &&
-                email.get('lexical') &&
-                automation.get('status') === 'active'
-            );
-
-            if (isActive) {
-                legacyRun = await this._WelcomeEmailAutomationRun.add({
-                    welcome_email_automation_id: automation.id,
-                    member_id: memberId,
-                    next_welcome_email_automated_email_id: email.id,
-                    ready_at: new Date(),
-                    step_started_at: null,
-                    step_attempts: 0,
-                    exit_reason: null
-                }, options);
-            }
-        }
-
-        await this.enqueueAutomationsWelcomeEmailRun({memberId, memberEmail, slug}, options);
-
-        if (legacyRun) {
-            this.dispatchEvent(StartAutomationsPollEvent.create(), options);
-        }
-
-        return legacyRun;
+    async #triggerMemberSignupAutomation(memberId, memberEmail, memberStatus) {
+        // TODO: Fix this type error
+        await this._automationsApi.enqueueRun({
+            event: 'member_sign_up',
+            filter: memberStatus,
+            memberId,
+            memberEmail
+        });
     }
 
-    async enqueueAutomationsWelcomeEmailRun({memberId, memberEmail, slug}, options = {}) {
-        if (!memberEmail) {
-            throw new errors.IncorrectUsageError({
-                message: `Cannot enqueue new automation run for member ${memberId}: missing member email`
-            });
+    /**
+     * @param {string} memberId
+     * @param {'free' | 'paid'} memberStatus
+     * @param {object} bookshelfOptions
+     * @returns {Promise<void>}
+     */
+    async #triggerMemberSignupLegacyAutomation(memberId, memberStatus, bookshelfOptions) {
+        if (!this._Automation || !this._WelcomeEmailAutomationRun) {
+            return;
         }
 
-        const enqueue = async () => {
-            await this._automationsApi.enqueueRun({
-                memberEmail,
-                memberId,
-                slug
-            });
+        const automation = await this._Automation.findOne(
+            {slug: memberStatus},
+            {...bookshelfOptions, withRelated: ['welcomeEmailAutomatedEmail']}
+        );
+        const email = automation?.related('welcomeEmailAutomatedEmail');
+        const isActive = Boolean(
+            automation &&
+            email &&
+            email.get('lexical') &&
+            automation.get('status') === 'active'
+        );
 
-            return true;
-        };
-
-        if (options?.transacting) {
-            options.transacting.executionPromise.then(enqueue).catch((err) => {
-                logging.error({
-                    err,
-                    message: `Error enqueuing new automation run for member ${memberId} after transaction finished`
-                });
-            });
-
-            return null;
+        if (!isActive) {
+            return;
         }
 
-        return enqueue();
+        await this._WelcomeEmailAutomationRun.add({
+            welcome_email_automation_id: automation.id,
+            member_id: memberId,
+            next_welcome_email_automated_email_id: email.id,
+            ready_at: new Date(),
+            step_started_at: null,
+            step_attempts: 0,
+            exit_reason: null
+        }, bookshelfOptions);
+
+        this.dispatchEvent(StartAutomationsPollEvent.create(), bookshelfOptions);
+    }
+
+    /**
+     * Trigger an automation for member signup.
+     *
+     * Callers are responsible for any eligibility gating (member status, source, etc.)
+     * before calling this.
+     *
+     * @param {string} memberId
+     * @param {string} memberEmail
+     * @param {'free' | 'paid'} memberStatus
+     * @param {object} bookshelfOptions
+     * @returns {Promise<void>}
+     */
+    async triggerMemberSignupAutomation(memberId, memberEmail, memberStatus, bookshelfOptions) {
+        await Promise.all([
+            this.#triggerMemberSignupAutomation(memberId, memberEmail, memberStatus, bookshelfOptions),
+            this.#triggerMemberSignupLegacyAutomation(memberId, memberStatus, bookshelfOptions)
+        ]);
     }
 
     /**
@@ -478,11 +468,12 @@ module.exports = class MemberRepository {
                     labels
                 }, {...memberAddOptions, transacting});
 
-                await this.enqueueWelcomeEmailRun({
-                    memberId: newMember.id,
-                    memberEmail: newMember.get('email'),
-                    slug: MEMBER_WELCOME_EMAIL_SLUGS.free
-                }, {transacting});
+                await this.triggerMemberSignupAutomation(
+                    newMember.id,
+                    newMember.get('email'),
+                    'free',
+                    {transacting}
+                );
 
                 return newMember;
             };
@@ -1066,7 +1057,8 @@ module.exports = class MemberRepository {
      * @param {Object} data.subscription
      * @param {string} data.offerId
      * @param {import('../../../member-attribution/attribution-builder').AttributionResource} [data.attribution]
-     * @param {*} options
+     * @param {object} [options]
+     * @param {Knex.Transacting} [options.transacting]
      * @returns
      */
     async linkSubscription(data, options = {}) {
@@ -1572,7 +1564,7 @@ module.exports = class MemberRepository {
             const context = options?.context || {};
             const source = this._resolveContextSource(context);
 
-            // Enqueue paid welcome email if:
+            // Enqueue automation if:
             // 1. The source is allowed to send welcome emails
             // 2. The member status changed to 'paid'
             // 3. The previous status wasn't 'gift', as gift members already received the paid welcome email on redemption
@@ -1581,11 +1573,12 @@ module.exports = class MemberRepository {
                 updatedMember.get('status') === 'paid' &&
                 updatedMember._previousAttributes.status !== 'gift'
             ) {
-                await this.enqueueWelcomeEmailRun({
-                    memberId: memberModel.id,
-                    memberEmail: memberModel.get('email'),
-                    slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
-                }, options);
+                await this.triggerMemberSignupAutomation(
+                    memberModel.id,
+                    memberModel.get('email'),
+                    'paid',
+                    options
+                );
             }
         }
     }

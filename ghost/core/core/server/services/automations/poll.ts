@@ -68,13 +68,13 @@ const processStep = async ({
 }: Readonly<PollOptions & {
     step: AutomationStepToRun;
 }>): Promise<void> => {
-    if (step.step_attempts > MAX_ATTEMPTS) {
-        await markMaxAttemptsExceeded(automationsApi, step);
+    if (step.automation_status !== 'active') {
+        await automationsApi.markStepTerminal(step, 'automation disabled');
         return;
     }
 
-    if (step.automation_status !== 'active') {
-        await automationsApi.markStepTerminal(step, 'automation disabled');
+    if (step.step_attempts > MAX_ATTEMPTS) {
+        await markMaxAttemptsExceeded(automationsApi, step);
         return;
     }
 

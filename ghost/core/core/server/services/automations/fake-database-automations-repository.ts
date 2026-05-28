@@ -361,7 +361,6 @@ function enqueueRun(database: DatabaseSync, {
         automation_action_revision_id: firstAction.automation_action_revision_id,
         ready_at: readyAt.toISOString()
     });
-
 }
 
 function findFirstActionRevision(database: DatabaseSync, slug: string): NextActionRevisionRow | null {
@@ -531,13 +530,7 @@ function getReadyAtForAction(action: Pick<NextActionRevisionRow, 'type' | 'wait_
         return new Date(now.getTime() + (requireValue({
             id: action.type,
             type: action.type,
-            wait_hours: action.wait_hours,
-            email_subject: null,
-            email_lexical: null,
-            email_sender_name: null,
-            email_sender_email: null,
-            email_sender_reply_to: null,
-            email_design_setting_id: null
+            wait_hours: action.wait_hours
         }, 'wait_hours') * HOUR_MS));
     case 'send_email':
         return now;

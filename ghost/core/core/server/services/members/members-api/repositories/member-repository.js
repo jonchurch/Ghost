@@ -238,7 +238,8 @@ module.exports = class MemberRepository {
         }
 
         const enqueue = async () => {
-            await this._automationsApi.enqueueRun({
+            await this._automationsApi.trigger({
+                event: 'member_signed_up',
                 memberEmail,
                 memberId,
                 slug

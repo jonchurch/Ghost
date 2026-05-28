@@ -145,7 +145,7 @@ describe('fake database automations repository', function () {
     }
 
     it('enqueues a run and first step for the first action in an active automation', async function () {
-        const result = await repository.enqueueRun({
+        const result = await repository.trigger({
             memberEmail: 'member@example.com',
             memberId: 'member-id',
             slug: 'member-welcome-email-free'
@@ -174,7 +174,7 @@ describe('fake database automations repository', function () {
             WHERE id = ?
         `).run(automation.id);
 
-        const result = await repository.enqueueRun({
+        const result = await repository.trigger({
             memberEmail: 'member@example.com',
             memberId: 'member-id',
             slug: 'member-welcome-email-free'

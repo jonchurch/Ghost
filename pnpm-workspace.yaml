@@ -172,3 +172,5 @@ minimumReleaseAgeExclude:
   - vitest@4.1.7
   # Renovate security update: @hookform/resolvers@5.4.0
   - "@hookform/resolvers@5.4.0"
+  # Renovate security update: jsonwebtoken@9.0.0
+  - jsonwebtoken@9.0.0

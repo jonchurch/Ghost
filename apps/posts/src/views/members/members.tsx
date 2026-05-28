@@ -6,32 +6,42 @@ import MembersHeaderSearch from './components/members-header-search';
 import MembersHelpCards from './components/members-help-cards';
 import MembersList from './components/members-list';
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, EmptyIndicator, LoadingIndicator} from '@tryghost/shade/components';
+import {Banner, Button, EmptyIndicator, LoadingIndicator} from '@tryghost/shade/components';
+import {Config, useBrowseConfig} from '@tryghost/admin-x-framework/api/config';
 import {FilterBar, PageHeader} from '@tryghost/shade/patterns';
 import {ListPage} from '@tryghost/shade/page-templates';
 import {LucideIcon, cn, formatNumber} from '@tryghost/shade/utils';
+import {MULTIPLE_ACTIVE_STRIPE_CUSTOMERS_FILTER, buildUserWithDismissedMultipleActiveStripeCustomersBanner, getMultipleActiveStripeCustomersBannerPreference, isMultipleActiveStripeCustomersFilter} from './multiple-active-stripe-customers';
+import {Setting, checkStripeEnabled, getSettingValue, useBrowseSettings} from '@tryghost/admin-x-framework/api/settings';
 import {buildMemberListSearchParams, getMemberActiveColumns} from './member-query-params';
+import {buildMembersUrl} from './member-route';
 import {canBulkDeleteMembers, shouldShowMembersLoading} from './members-view-state';
-import {getSettingValue, useBrowseSettings} from '@tryghost/admin-x-framework/api/settings';
+import {canManageMembers, useEditUser} from '@tryghost/admin-x-framework/api/users';
 import {getSiteTimezone} from '@src/utils/get-site-timezone';
 import {shouldDelayMembersDateFilterHydration, useMembersFilterState} from './hooks/use-members-filter-state';
+import {toast} from 'sonner';
 import {useActiveMemberView, useMemberViews} from './hooks/use-member-views';
-import {useBrowseConfig} from '@tryghost/admin-x-framework/api/config';
-import {useBrowseMembersInfinite} from '@tryghost/admin-x-framework/api/members';
+import {useBrowseMembers, useBrowseMembersInfinite} from '@tryghost/admin-x-framework/api/members';
+import {useCurrentUser} from '@tryghost/admin-x-framework/api/current-user';
 import {useDebounce} from 'use-debounce';
-import {useLocation, useSearchParams} from 'react-router';
+import {useLocation, useNavigate, useSearchParams} from 'react-router';
 
 const SEARCH_DEBOUNCE_MS = 250;
 const MEMBERS_HELP_CARDS_LIMIT = 6;
 
-const MembersPage: React.FC<{timezone: string; membershipsEnabled: boolean}> = ({timezone, membershipsEnabled}) => {
+const MembersPage: React.FC<{timezone: string; membershipsEnabled: boolean; settings: Setting[]; config: Config}> = ({timezone, membershipsEnabled, settings, config}) => {
     const headerRef = useRef<HTMLDivElement | null>(null);
     const setHeaderContentRef = useCallback((node: HTMLDivElement | null) => {
         headerRef.current = node?.closest('[data-list-page="header"]') as HTMLDivElement | null;
     }, []);
-    const {filters, nql, search, setFilters, setSearch, hasFilterOrSearch, clearAll} = useMembersFilterState(timezone);
+    const multipleSubsFilterEnabled = config.labs?.multipleSubsFilter === true;
+    const {filters, nql, search, setFilters, setSearch, hasFilterOrSearch, clearAll} = useMembersFilterState(timezone, {
+        preserveMultipleActiveStripeCustomersFilter: multipleSubsFilterEnabled
+    });
     const location = useLocation();
-    const {data: configData} = useBrowseConfig();
+    const navigate = useNavigate();
+    const {data: currentUser} = useCurrentUser();
+    const {mutateAsync: editUser, isLoading: isDismissingMultipleActiveStripeCustomersBanner} = useEditUser();
     const savedViews = useMemberViews();
     const activeView = useActiveMemberView(savedViews, nql);
     const [showMobileSearch, setShowMobileSearch] = useState(false);
@@ -39,7 +49,43 @@ const MembersPage: React.FC<{timezone: string; membershipsEnabled: boolean}> = (
     const [searchInput, setSearchInput] = useState(search);
     const [debouncedSearch] = useDebounce(searchInput, SEARCH_DEBOUNCE_MS);
 
-    const emailAnalyticsEnabled = configData?.config?.emailAnalytics === true;
+    const emailAnalyticsEnabled = config.emailAnalytics === true;
+    const hasStripeEnabled = checkStripeEnabled(settings, config);
+    const canManageMemberList = currentUser ? canManageMembers(currentUser) : false;
+    const isViewingMultipleActiveStripeCustomersFilter = isMultipleActiveStripeCustomersFilter(nql);
+    const shouldConsiderMultipleActiveStripeCustomersBanner = !search && (!nql || isViewingMultipleActiveStripeCustomersFilter);
+
+    const [optimisticDismissedMultipleActiveStripeCustomersCount, setOptimisticDismissedMultipleActiveStripeCustomersCount] = useState<number | null>(null);
+
+    const {
+        data: multipleActiveStripeCustomersData
+    } = useBrowseMembers({
+        searchParams: {
+            filter: MULTIPLE_ACTIVE_STRIPE_CUSTOMERS_FILTER,
+            limit: '1',
+            fields: 'id',
+            order: 'id'
+        },
+        defaultErrorHandler: false,
+        enabled: multipleSubsFilterEnabled && canManageMemberList && hasStripeEnabled && shouldConsiderMultipleActiveStripeCustomersBanner,
+        refetchOnMount: 'always',
+        staleTime: 0
+    });
+
+    const multipleActiveStripeCustomersCount = multipleActiveStripeCustomersData?.meta?.pagination?.total ?? 0;
+    const multipleActiveStripeCustomersBannerPreference = useMemo(() => {
+        return getMultipleActiveStripeCustomersBannerPreference(currentUser?.accessibility);
+    }, [currentUser?.accessibility]);
+    const dismissedMultipleActiveStripeCustomersCount = optimisticDismissedMultipleActiveStripeCustomersCount
+        ?? multipleActiveStripeCustomersBannerPreference.dismissedCount
+        ?? 0;
+    const shouldShowMultipleActiveStripeCustomersBanner = multipleSubsFilterEnabled
+        && shouldConsiderMultipleActiveStripeCustomersBanner
+        && (
+            isViewingMultipleActiveStripeCustomersFilter
+            || multipleActiveStripeCustomersCount > dismissedMultipleActiveStripeCustomersCount
+        );
+    const canDismissMultipleActiveStripeCustomersBanner = !isViewingMultipleActiveStripeCustomersFilter;
 
     const activeColumns = useMemo(() => {
         return getMemberActiveColumns(filters);
@@ -91,6 +137,45 @@ const MembersPage: React.FC<{timezone: string; membershipsEnabled: boolean}> = (
         }
     }, [debouncedSearch, search, setSearch]);
 
+    useEffect(() => {
+        const dismissedCount = multipleActiveStripeCustomersBannerPreference.dismissedCount;
+
+        if (
+            !currentUser
+            || optimisticDismissedMultipleActiveStripeCustomersCount !== null
+            || isDismissingMultipleActiveStripeCustomersBanner
+            || dismissedCount === undefined
+            || multipleActiveStripeCustomersData === undefined
+            || multipleActiveStripeCustomersCount >= dismissedCount
+        ) {
+            return;
+        }
+
+        setOptimisticDismissedMultipleActiveStripeCustomersCount(multipleActiveStripeCustomersCount);
+
+        editUser(buildUserWithDismissedMultipleActiveStripeCustomersBanner(
+            currentUser,
+            multipleActiveStripeCustomersCount,
+            multipleActiveStripeCustomersBannerPreference.dismissedAt ?? new Date().toISOString()
+        )).then(() => {
+            setOptimisticDismissedMultipleActiveStripeCustomersCount(null);
+        }).catch((error) => {
+            setOptimisticDismissedMultipleActiveStripeCustomersCount(null);
+            // This keeps the preference in sync opportunistically; failing to sync should not interrupt the member list.
+            // eslint-disable-next-line no-console
+            console.log('Unable to update multiple active Stripe customers banner dismissed count', error);
+        });
+    }, [
+        currentUser,
+        editUser,
+        isDismissingMultipleActiveStripeCustomersBanner,
+        multipleActiveStripeCustomersBannerPreference.dismissedAt,
+        multipleActiveStripeCustomersBannerPreference.dismissedCount,
+        multipleActiveStripeCustomersCount,
+        multipleActiveStripeCustomersData,
+        optimisticDismissedMultipleActiveStripeCustomersCount
+    ]);
+
     const handleMobileSearchToggle = () => {
         if (showMobileSearch) {
             setShowMobileSearch(false);
@@ -100,6 +185,32 @@ const MembersPage: React.FC<{timezone: string; membershipsEnabled: boolean}> = (
 
         setMobileSearchOpenedByUser(true);
         setShowMobileSearch(true);
+    };
+
+    const handleViewMultipleActiveStripeCustomers = () => {
+        navigate(buildMembersUrl({filter: MULTIPLE_ACTIVE_STRIPE_CUSTOMERS_FILTER}));
+    };
+
+    const handleDismissMultipleActiveStripeCustomersBanner = () => {
+        if (!currentUser || isDismissingMultipleActiveStripeCustomersBanner) {
+            return;
+        }
+
+        const dismissedCount = multipleActiveStripeCustomersCount;
+        const previousDismissedCount = optimisticDismissedMultipleActiveStripeCustomersCount;
+
+        setOptimisticDismissedMultipleActiveStripeCustomersCount(dismissedCount);
+
+        editUser(buildUserWithDismissedMultipleActiveStripeCustomersBanner(
+            currentUser,
+            dismissedCount,
+            new Date().toISOString()
+        )).then(() => {
+            setOptimisticDismissedMultipleActiveStripeCustomersCount(null);
+        }).catch(() => {
+            setOptimisticDismissedMultipleActiveStripeCustomersCount(previousDismissedCount);
+            toast.error('Unable to dismiss notification. Please try again.');
+        });
     };
 
     const filtersClassName = 'flex-col gap-4 lg:flex-row lg:items-center sidebar:gap-6 lg:gap-6';
@@ -186,6 +297,29 @@ const MembersPage: React.FC<{timezone: string; membershipsEnabled: boolean}> = (
                                 )}
                             </FilterBar>
                         )}
+                        {shouldShowMultipleActiveStripeCustomersBanner && (
+                            <Banner
+                                role="status"
+                                variant="warning"
+                                {...(canDismissMultipleActiveStripeCustomersBanner ? {
+                                    dismissible: true as const,
+                                    onDismiss: handleDismissMultipleActiveStripeCustomersBanner
+                                } : {
+                                    dismissible: false as const
+                                })}
+                            >
+                                <div className="flex flex-col gap-3 pr-8 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="text-sm font-medium">
+                                        {formatNumber(multipleActiveStripeCustomersCount)} {multipleActiveStripeCustomersCount === 1 ? 'member' : 'members'} with active subscriptions across multiple Stripe customers were found.
+                                    </div>
+                                    {canDismissMultipleActiveStripeCustomersBanner && (
+                                        <Button size="sm" variant="outline" onClick={handleViewMultipleActiveStripeCustomers}>
+                                            View members
+                                        </Button>
+                                    )}
+                                </div>
+                            </Banner>
+                        )}
                     </div>
                 </ListPage.Header>
                 <ListPage.Body>
@@ -252,11 +386,12 @@ const MembersPage: React.FC<{timezone: string; membershipsEnabled: boolean}> = (
 const Members: React.FC = () => {
     const [searchParams] = useSearchParams();
     const {data: settingsData, isLoading: isSettingsLoading} = useBrowseSettings({});
+    const {data: configData, isLoading: isConfigLoading} = useBrowseConfig();
     const filterParam = searchParams.get('filter') ?? undefined;
     const hasResolvedSettings = Boolean(settingsData?.settings);
     const shouldDelayHydration = shouldDelayMembersDateFilterHydration(filterParam, hasResolvedSettings, isSettingsLoading);
 
-    if (isSettingsLoading || !settingsData?.settings || shouldDelayHydration) {
+    if (isSettingsLoading || isConfigLoading || !settingsData?.settings || !configData?.config || shouldDelayHydration) {
         return (
             <MainLayout>
                 <ListPage>
@@ -284,7 +419,7 @@ const Members: React.FC = () => {
     const membersSignupAccess = getSettingValue<string>(settingsData.settings, 'members_signup_access');
     const membershipsEnabled = membersSignupAccess !== 'none';
 
-    return <MembersPage membershipsEnabled={membershipsEnabled} timezone={timezone} />;
+    return <MembersPage config={configData.config} membershipsEnabled={membershipsEnabled} settings={settingsData.settings} timezone={timezone} />;
 };
 
 export default Members;

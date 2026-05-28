@@ -1,5 +1,6 @@
 import {Filter} from '@tryghost/shade/patterns';
 import {hasTimezoneSensitiveMemberFilter, parseMemberFilter, serializeMemberFilters} from '../member-filter-query';
+import {isMultipleActiveStripeCustomersFilter} from '../multiple-active-stripe-customers';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useSearchParams} from 'react-router';
 
@@ -23,6 +24,11 @@ interface ToSearchParamsOptions {
     filters: Filter[];
     search: string;
     timezone: string;
+    rawFilter?: string;
+}
+
+interface UseMembersFilterStateOptions {
+    preserveMultipleActiveStripeCustomersFilter?: boolean;
 }
 
 export function shouldDelayMembersDateFilterHydration(
@@ -33,9 +39,9 @@ export function shouldDelayMembersDateFilterHydration(
     return Boolean(filterParam) && isSettingsLoading && !hasResolvedTimezone && hasTimezoneSensitiveMemberFilter(filterParam);
 }
 
-function toSearchParams({baseSearchParams, filters, search, timezone}: ToSearchParamsOptions): URLSearchParams {
+function toSearchParams({baseSearchParams, filters, search, timezone, rawFilter}: ToSearchParamsOptions): URLSearchParams {
     const params = new URLSearchParams(baseSearchParams);
-    const filter = serializeMemberFilters(filters, timezone);
+    const filter = rawFilter || serializeMemberFilters(filters, timezone);
 
     params.delete('filter');
     params.delete('search');
@@ -51,24 +57,34 @@ function toSearchParams({baseSearchParams, filters, search, timezone}: ToSearchP
     return params;
 }
 
-export function useMembersFilterState(timezone: string): UseMembersFilterStateReturn {
+export function useMembersFilterState(timezone: string, hookOptions: UseMembersFilterStateOptions = {}): UseMembersFilterStateReturn {
     const [searchParams, setSearchParams] = useSearchParams();
     const lastWrittenQueryRef = useRef<string | null>(null);
     const filterParam = useMemo(() => searchParams.get('filter') ?? undefined, [searchParams]);
     const currentQuery = useMemo(() => searchParams.toString(), [searchParams]);
+    const preserveMultipleActiveStripeCustomersFilter = hookOptions.preserveMultipleActiveStripeCustomersFilter === true;
 
     const parsedFilters = useMemo(() => {
         return parseMemberFilter(filterParam, timezone);
     }, [filterParam, timezone]);
     const [filters, setDraftFilters] = useState<Filter[]>(parsedFilters);
+    const preservedRawFilter = useMemo(() => {
+        return preserveMultipleActiveStripeCustomersFilter && filters.length === 0 && isMultipleActiveStripeCustomersFilter(filterParam)
+            ? filterParam
+            : undefined;
+    }, [filterParam, filters.length, preserveMultipleActiveStripeCustomersFilter]);
 
     const search = useMemo(() => {
         return searchParams.get('search') ?? '';
     }, [searchParams]);
 
     const nql = useMemo(() => {
+        if (preservedRawFilter) {
+            return preservedRawFilter;
+        }
+
         return serializeMemberFilters(filters, timezone);
-    }, [filters, timezone]);
+    }, [filters, preservedRawFilter, timezone]);
 
     useEffect(() => {
         if (currentQuery !== lastWrittenQueryRef.current) {
@@ -86,7 +102,8 @@ export function useMembersFilterState(timezone: string): UseMembersFilterStateRe
             baseSearchParams: searchParams,
             filters,
             search,
-            timezone
+            timezone,
+            rawFilter: preservedRawFilter
         });
         const nextQuery = nextParams.toString();
 
@@ -94,7 +111,7 @@ export function useMembersFilterState(timezone: string): UseMembersFilterStateRe
             lastWrittenQueryRef.current = nextQuery;
             setSearchParams(nextParams, {replace: true});
         }
-    }, [currentQuery, filters, search, searchParams, setSearchParams, timezone]);
+    }, [currentQuery, filters, preservedRawFilter, search, searchParams, setSearchParams, timezone]);
 
     const setFilters = useCallback((nextFilters: Filter[], options: SetFiltersOptions = {}) => {
         const replace = options.replace ?? true;
@@ -116,12 +133,13 @@ export function useMembersFilterState(timezone: string): UseMembersFilterStateRe
             baseSearchParams: searchParams,
             filters,
             search: nextSearch,
-            timezone
+            timezone,
+            rawFilter: preservedRawFilter
         });
 
         lastWrittenQueryRef.current = nextParams.toString();
         setSearchParams(nextParams, {replace});
-    }, [filters, searchParams, setSearchParams, timezone]);
+    }, [filters, preservedRawFilter, searchParams, setSearchParams, timezone]);
 
     const clearFilters = useCallback(({replace = true}: SetFiltersOptions = {}) => {
         const nextParams = toSearchParams({

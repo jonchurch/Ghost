@@ -53,7 +53,8 @@ const PRIVATE_FEATURES = [
     'themeTranslation',
     'indexnow',
     'pictureImageFormats',
-    'smarterCounts'
+    'smarterCounts',
+    'multipleSubsFilter'
 ];
 
 module.exports.GA_KEYS = [...GA_FEATURES];

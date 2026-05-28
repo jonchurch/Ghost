@@ -63,6 +63,10 @@ const features: Feature[] = [{
     title: 'Smarter Counts',
     description: 'Use optimized COUNT queries for API pagination when safe',
     flag: 'smarterCounts'
+}, {
+    title: 'Multiple subscriptions filter',
+    description: 'Show a members notification and filter for multiple active Stripe subscriptions',
+    flag: 'multipleSubsFilter'
 }];
 
 const AlphaFeatures: React.FC = () => {

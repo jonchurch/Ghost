@@ -1,9 +1,9 @@
-const assert = require('node:assert/strict');
-const sinon = require('sinon');
+import assert from 'node:assert/strict';
+import sinon from 'sinon';
 
-const {poll} = require('../../../../../core/server/services/automations/poll');
-const {Member} = require('../../../../../core/server/models');
-const {MEMBER_WELCOME_EMAIL_SLUGS} = require('../../../../../core/server/services/member-welcome-emails/constants');
+import {poll} from '../../../../../core/server/services/automations/poll';
+import {Member} from '../../../../../core/server/models';
+import {MEMBER_WELCOME_EMAIL_SLUGS} from '../../../../../core/server/services/member-welcome-emails/constants';
 
 const MAX_STEPS_PER_BATCH = 100;
 const RETRY_DELAY_MS = 10 * 60 * 1000;

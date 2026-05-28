@@ -66,7 +66,7 @@ catalog:
   dompurify: 3.4.5
   dotenv: 17.4.2
   eslint: 8.57.1
-  eslint-plugin-react-refresh: 0.4.24
+  eslint-plugin-react-refresh: 0.5.2
   fs-extra: 11.3.5
   glob: 10.5.0
   jsdom: 29.1.1
@@ -176,3 +176,5 @@ minimumReleaseAgeExclude:
   - "@types/node@22.19.19"
   # Renovate security update: @types/react@18.3.29
   - "@types/react@18.3.29"
+  # Renovate security update: eslint-plugin-react-refresh@0.5.2
+  - eslint-plugin-react-refresh@0.5.2

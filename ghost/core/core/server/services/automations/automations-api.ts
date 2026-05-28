@@ -240,7 +240,14 @@ export function requestPoll() {
 }
 
 export async function trigger(...args: Parameters<AutomationsRepository['trigger']>) {
-    // TODO: Only do this in development/testing
+    const shouldTrigger = (
+        process.env.NODE_ENV === 'development' ||
+        process.env.NODE_ENV?.startsWith('testing')
+    );
+    if (!shouldTrigger) {
+        return;
+    }
+
     await repository.trigger(...args);
     requestPoll();
 }

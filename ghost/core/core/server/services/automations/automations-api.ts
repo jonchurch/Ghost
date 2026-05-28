@@ -239,7 +239,17 @@ export function requestPoll() {
     domainEvents.dispatch(StartAutomationsPollEvent.create());
 }
 
-export async function trigger(...args: Parameters<AutomationsRepository['trigger']>) {
+type TriggerArg = Parameters<AutomationsRepository['trigger']>[0] & {
+    event: 'member_sign_up';
+};
+
+export async function trigger(data: TriggerArg) {
+    if (data.event !== 'member_sign_up') {
+        throw new errors.IncorrectUsageError({
+            message: 'Member signup is the only supported event right now'
+        });
+    }
+
     const shouldTrigger = (
         process.env.NODE_ENV === 'development' ||
         process.env.NODE_ENV?.startsWith('testing')
@@ -248,7 +258,7 @@ export async function trigger(...args: Parameters<AutomationsRepository['trigger
         return;
     }
 
-    await repository.trigger(...args);
+    await repository.trigger(data);
 
     requestPoll();
 }

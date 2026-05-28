@@ -183,12 +183,11 @@ module.exports = class MemberRepository {
      * @returns {Promise<void>}
      */
     async #triggerMemberSignupAutomation(memberId, memberEmail, memberStatus) {
-        // TODO: Fix this type error
         await this._automationsApi.trigger({
             event: 'member_sign_up',
-            filter: memberStatus,
             memberId,
-            memberEmail
+            memberEmail,
+            memberStatus
         });
     }
 

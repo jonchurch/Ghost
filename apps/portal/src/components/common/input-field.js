@@ -120,7 +120,7 @@ function InputField({
     let pattern;
     switch (id) {
     case 'input-email':
-        autoComplete = 'off';
+        autoComplete = 'email';
         autoCorrect = 'off';
         autoCapitalize = 'off';
         break;

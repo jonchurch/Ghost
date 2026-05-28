@@ -1608,7 +1608,7 @@ describe('MemberRepository', function () {
             };
 
             automationsApi = {
-                trigger: sinon.stub().resolves()
+                enqueueRun: sinon.stub().resolves()
             };
 
             Automation = {
@@ -1661,7 +1661,7 @@ describe('MemberRepository', function () {
             assert.equal(runCall.step_started_at, null);
             assert.equal(runCall.step_attempts, 0);
             assert.equal(runCall.exit_reason, null);
-            sinon.assert.calledOnceWithExactly(automationsApi.trigger, {
+            sinon.assert.calledOnceWithExactly(automationsApi.enqueueRun, {
                 memberEmail: 'test@example.com',
                 memberId: 'member_id_123',
                 slug: MEMBER_WELCOME_EMAIL_SLUGS.free
@@ -1689,11 +1689,11 @@ describe('MemberRepository', function () {
 
             for (const source of disallowedSources) {
                 WelcomeEmailAutomationRun.add.resetHistory();
-                automationsApi.trigger.resetHistory();
+                automationsApi.enqueueRun.resetHistory();
                 await repo.create({email: 'test@example.com', name: 'Test Member'}, {context: source.context});
                 await flushPromises();
                 sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
-                sinon.assert.notCalled(automationsApi.trigger);
+                sinon.assert.notCalled(automationsApi.enqueueRun);
             }
         });
 
@@ -1749,7 +1749,7 @@ describe('MemberRepository', function () {
             await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
-            sinon.assert.calledOnceWithExactly(automationsApi.trigger, {
+            sinon.assert.calledOnceWithExactly(automationsApi.enqueueRun, {
                 memberEmail: 'test@example.com',
                 memberId: 'member_id_123',
                 slug: MEMBER_WELCOME_EMAIL_SLUGS.free
@@ -1961,7 +1961,7 @@ describe('MemberRepository', function () {
             };
 
             automationsApi = {
-                trigger: sinon.stub().resolves()
+                enqueueRun: sinon.stub().resolves()
             };
         });
 
@@ -2016,7 +2016,7 @@ describe('MemberRepository', function () {
             assert.equal(runCall.step_started_at, null);
             assert.equal(runCall.step_attempts, 0);
             assert.equal(runCall.exit_reason, null);
-            sinon.assert.calledOnceWithExactly(automationsApi.trigger, {
+            sinon.assert.calledOnceWithExactly(automationsApi.enqueueRun, {
                 memberEmail: 'test@example.com',
                 memberId: 'member_id_123',
                 slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
@@ -2058,7 +2058,7 @@ describe('MemberRepository', function () {
 
             for (const source of disallowedSources) {
                 WelcomeEmailAutomationRun.add.resetHistory();
-                automationsApi.trigger.resetHistory();
+                automationsApi.enqueueRun.resetHistory();
                 await repo.linkSubscription({
                     id: 'member_id_123',
                     subscription: subscriptionData
@@ -2070,7 +2070,7 @@ describe('MemberRepository', function () {
                 });
                 await flushPromises();
                 sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
-                sinon.assert.notCalled(automationsApi.trigger);
+                sinon.assert.notCalled(automationsApi.enqueueRun);
             }
         });
 
@@ -2131,7 +2131,7 @@ describe('MemberRepository', function () {
             await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
-            sinon.assert.calledOnceWithExactly(automationsApi.trigger, {
+            sinon.assert.calledOnceWithExactly(automationsApi.enqueueRun, {
                 memberEmail: 'test@example.com',
                 memberId: 'member_id_123',
                 slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
@@ -2177,7 +2177,7 @@ describe('MemberRepository', function () {
             await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
-            sinon.assert.notCalled(automationsApi.trigger);
+            sinon.assert.notCalled(automationsApi.enqueueRun);
         });
     });
 

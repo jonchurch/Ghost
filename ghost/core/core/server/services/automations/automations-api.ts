@@ -239,8 +239,8 @@ function requestPoll() {
     domainEvents.dispatch(StartAutomationsPollEvent.create());
 }
 
-async function trigger(...args: Parameters<AutomationsRepository['trigger']>) {
-    await repository.trigger(...args);
+async function enqueueRun(...args: Parameters<AutomationsRepository['enqueueRun']>) {
+    await repository.enqueueRun(...args);
     requestPoll();
 }
 
@@ -270,7 +270,7 @@ module.exports = {
     _resetTestDatabase,
     browse,
     edit,
-    trigger,
+    enqueueRun,
     fetchAndLockSteps,
     finishStepAndEnqueueNext,
     markStepTerminal,

@@ -137,14 +137,14 @@ export function createFakeDatabaseAutomationsRepository({
             });
         },
 
-        async trigger(data: {
+        async enqueueRun(data: {
             memberEmail: string;
             memberId: string;
             slug: string;
         }): Promise<void> {
             const database = getDatabase();
 
-            return withTransaction(database, () => trigger(database, data));
+            return withTransaction(database, () => enqueueRun(database, data));
         },
 
         async fetchAndLockSteps(limit: number): Promise<{
@@ -291,7 +291,7 @@ function fetchAndLockSteps(database: DatabaseSync, limit: number): {
     };
 }
 
-function trigger(database: DatabaseSync, {
+function enqueueRun(database: DatabaseSync, {
     memberEmail,
     memberId,
     slug

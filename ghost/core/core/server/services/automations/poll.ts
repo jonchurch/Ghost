@@ -5,9 +5,10 @@ const MAX_STEPS_PER_BATCH = 100;
 const MAX_ATTEMPTS = 10;
 const RETRY_DELAY_MS = 10 * 60 * 1000;
 
-const logging = require('@tryghost/logging');
-const {Member} = require('../../models');
-const {MEMBER_WELCOME_EMAIL_ELIGIBLE_STATUSES, MEMBER_WELCOME_EMAIL_SLUGS} = require('../member-welcome-emails/constants');
+import logging from '@tryghost/logging';
+import errors from '@tryghost/errors';
+import {Member} from '../../models';
+import {MEMBER_WELCOME_EMAIL_ELIGIBLE_STATUSES, MEMBER_WELCOME_EMAIL_SLUGS} from '../member-welcome-emails/constants';
 
 type MemberWelcomeEmailService = {
     init: () => unknown;
@@ -93,6 +94,7 @@ const processStep = async ({
     }
 
     if (!step.member_id) {
+        // TODO: This should be an error like "member was deleted"
         await automationsApi.markStepTerminal(step, 'member unsubscribed');
         return;
     }
@@ -100,6 +102,7 @@ const processStep = async ({
     const member = await Member.findOne({id: step.member_id}) as MemberModel | null;
 
     if (!member) {
+        // TODO: This should be an internal server error, possibly
         await automationsApi.markStepTerminal(step, 'member unsubscribed');
         return;
     }
@@ -110,15 +113,12 @@ const processStep = async ({
         return;
     }
 
+    let nextReadyAt: Date | null = null;
+
     switch (step.type) {
     case 'wait': {
-        const nextReadyAt = await automationsApi.finishStepAndEnqueueNext(step);
-
-        if (nextReadyAt) {
-            enqueueAnotherPollAt(nextReadyAt);
-        }
-
-        return;
+        nextReadyAt = await automationsApi.finishStepAndEnqueueNext(step);
+        break;
     }
     case 'send_email': {
         memberWelcomeEmailService.init();
@@ -134,6 +134,7 @@ const processStep = async ({
                     subject: step.email_subject
                 },
                 member: {
+                    // TODO: This is weird
                     email: member.get('email') ?? step.member_email,
                     name: member.get('name'),
                     uuid: member.get('uuid') ?? ''
@@ -141,11 +142,7 @@ const processStep = async ({
                 memberStatus
             });
 
-            const nextReadyAt = await automationsApi.finishStepAndEnqueueNext(step);
-
-            if (nextReadyAt) {
-                enqueueAnotherPollAt(nextReadyAt);
-            }
+            nextReadyAt = await automationsApi.finishStepAndEnqueueNext(step);
         } catch (err) {
             logging.error({
                 err,
@@ -157,8 +154,8 @@ const processStep = async ({
 
             if (step.step_attempts < MAX_ATTEMPTS) {
                 const retryAt = new Date(Date.now() + RETRY_DELAY_MS);
+                // TODO: I don't understand this part
                 const didRetry = await automationsApi.retryStep(step, retryAt);
-
                 if (didRetry) {
                     enqueueAnotherPollAt(retryAt);
                 }
@@ -166,9 +163,18 @@ const processStep = async ({
                 await markMaxAttemptsExceeded(automationsApi, step);
             }
         }
-
-        return;
+        break;
     }
+    default: {
+        const _exhaustive: never = step;
+        throw new errors.InternalServerError({
+            message: `Unexpected automation step type ${_exhaustive}`
+        });
+    }
+    }
+
+    if (nextReadyAt) {
+        enqueueAnotherPollAt(nextReadyAt);
     }
 };
 

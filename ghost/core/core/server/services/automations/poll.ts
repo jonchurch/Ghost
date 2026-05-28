@@ -7,8 +7,9 @@ const RETRY_DELAY_MS = 10 * 60 * 1000;
 
 import logging from '@tryghost/logging';
 import errors from '@tryghost/errors';
-import {Member} from '../../models';
 import {MEMBER_WELCOME_EMAIL_ELIGIBLE_STATUSES, MEMBER_WELCOME_EMAIL_SLUGS} from '../member-welcome-emails/constants';
+
+const {Member} = require('../../models');
 
 type MemberWelcomeEmailService = {
     init: () => unknown;

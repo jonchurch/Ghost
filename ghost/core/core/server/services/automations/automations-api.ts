@@ -239,9 +239,9 @@ export function requestPoll() {
     domainEvents.dispatch(StartAutomationsPollEvent.create());
 }
 
-export async function enqueueRun(...args: Parameters<AutomationsRepository['enqueueRun']>) {
+export async function trigger(...args: Parameters<AutomationsRepository['trigger']>) {
     // TODO: Only do this in development/testing
-    await repository.enqueueRun(...args);
+    await repository.trigger(...args);
     requestPoll();
 }
 

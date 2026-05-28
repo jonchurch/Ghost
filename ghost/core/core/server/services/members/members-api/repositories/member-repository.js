@@ -184,7 +184,7 @@ module.exports = class MemberRepository {
      */
     async #triggerMemberSignupAutomation(memberId, memberEmail, memberStatus) {
         // TODO: Fix this type error
-        await this._automationsApi.enqueueRun({
+        await this._automationsApi.trigger({
             event: 'member_sign_up',
             filter: memberStatus,
             memberId,

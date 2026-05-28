@@ -103,7 +103,7 @@ export interface AutomationsRepository {
     browse(): Promise<Page<AutomationSummary>>;
     getById(id: string): Promise<Automation | null>;
     edit(id: string, data: EditAutomationData): Promise<Automation | null>;
-    enqueueRun(data: {
+    trigger(data: {
         memberEmail: string;
         memberId: string;
         slug: string;

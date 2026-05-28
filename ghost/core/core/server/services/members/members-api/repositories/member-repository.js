@@ -186,12 +186,13 @@ module.exports = class MemberRepository {
      * `options.transacting` to run the legacy insert inside an existing transaction;
      * that legacy dispatch is automatically deferred until the transaction commits.
      *
-     * @param {string} memberId
-     * @param {string} slug automation slug, see MEMBER_WELCOME_EMAIL_SLUGS
+     * @param {object} data
+     * @param {string} data.memberId
+     * @param {string} data.memberEmail
+     * @param {string} data.slug automation slug, see MEMBER_WELCOME_EMAIL_SLUGS
      * @param {object} [options] bookshelf options (transacting, context, etc.)
-     * @param {string} [options.memberEmail]
      */
-    async enqueueWelcomeEmailRun(memberId, slug, options = {}) {
+    async enqueueWelcomeEmailRun({memberId, memberEmail, slug}, options = {}) {
         let legacyRun = null;
 
         if (this._Automation && this._WelcomeEmailAutomationRun) {
@@ -220,7 +221,7 @@ module.exports = class MemberRepository {
             }
         }
 
-        await this.enqueueAutomationsWelcomeEmailRun(memberId, slug, options);
+        await this.enqueueAutomationsWelcomeEmailRun({memberId, memberEmail, slug}, options);
 
         if (legacyRun) {
             this.dispatchEvent(StartAutomationsPollEvent.create(), options);
@@ -229,26 +230,14 @@ module.exports = class MemberRepository {
         return legacyRun;
     }
 
-    async enqueueAutomationsWelcomeEmailRun(memberId, slug, options = {}) {
+    async enqueueAutomationsWelcomeEmailRun({memberId, memberEmail, slug}, options = {}) {
+        if (!memberEmail) {
+            throw new errors.IncorrectUsageError({
+                message: `Cannot enqueue new automation run for member ${memberId}: missing member email`
+            });
+        }
+
         const enqueue = async () => {
-            let memberEmail = options.memberEmail;
-
-            if (!memberEmail) {
-                const member = await this._Member?.findOne({id: memberId});
-                memberEmail = member?.get('email');
-            }
-
-            if (!memberEmail) {
-                logging.warn({
-                    system: {
-                        event: 'automations.poll.member_email_missing',
-                        member_id: memberId,
-                        slug
-                    }
-                }, `[AUTOMATIONS] Cannot enqueue new automation run for member ${memberId}: missing member email`);
-                return false;
-            }
-
             await this._automationsApi.enqueueRun({
                 memberEmail,
                 memberId,
@@ -489,10 +478,11 @@ module.exports = class MemberRepository {
                     labels
                 }, {...memberAddOptions, transacting});
 
-                await this.enqueueWelcomeEmailRun(newMember.id, MEMBER_WELCOME_EMAIL_SLUGS.free, {
-                    transacting,
-                    memberEmail: newMember.get('email')
-                });
+                await this.enqueueWelcomeEmailRun({
+                    memberId: newMember.id,
+                    memberEmail: newMember.get('email'),
+                    slug: MEMBER_WELCOME_EMAIL_SLUGS.free
+                }, {transacting});
 
                 return newMember;
             };
@@ -1591,10 +1581,11 @@ module.exports = class MemberRepository {
                 updatedMember.get('status') === 'paid' &&
                 updatedMember._previousAttributes.status !== 'gift'
             ) {
-                await this.enqueueWelcomeEmailRun(memberModel.id, MEMBER_WELCOME_EMAIL_SLUGS.paid, {
-                    ...options,
-                    memberEmail: memberModel.get('email')
-                });
+                await this.enqueueWelcomeEmailRun({
+                    memberId: memberModel.id,
+                    memberEmail: memberModel.get('email'),
+                    slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
+                }, options);
             }
         }
     }

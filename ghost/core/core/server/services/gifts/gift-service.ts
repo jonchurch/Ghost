@@ -39,7 +39,11 @@ interface MemberModel {
 interface MemberRepository {
     get(filter: Record<string, unknown>, options?: Record<string, unknown>): Promise<MemberModel | null>;
     update(data: Record<string, unknown>, options?: Record<string, unknown>): Promise<unknown>;
-    enqueueWelcomeEmailRun(memberId: string, slug: string, options?: Record<string, unknown>): Promise<unknown>;
+    enqueueWelcomeEmailRun(data: {
+        memberId: string;
+        memberEmail: string;
+        slug: string;
+    }, options?: Record<string, unknown>): Promise<unknown>;
 }
 
 type Tier = {
@@ -307,7 +311,11 @@ export class GiftService {
             await this.deps.giftRepository.update(redeemed, {transacting});
 
             // Gift members receive the paid welcome email, as they receive access to paid content
-            await this.deps.memberRepository.enqueueWelcomeEmailRun(memberId, MEMBER_WELCOME_EMAIL_SLUGS.paid, {transacting});
+            await this.deps.memberRepository.enqueueWelcomeEmailRun({
+                memberId,
+                memberEmail: member.get('email'),
+                slug: MEMBER_WELCOME_EMAIL_SLUGS.paid
+            }, {transacting});
 
             return {redeemed, member};
         };

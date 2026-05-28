@@ -1280,8 +1280,11 @@ describe('GiftService', function () {
 
             sinon.assert.calledOnceWithExactly(
                 memberRepository.enqueueWelcomeEmailRun,
-                'member_1',
-                'member-welcome-email-paid',
+                {
+                    memberId: 'member_1',
+                    memberEmail: 'member@example.com',
+                    slug: 'member-welcome-email-paid'
+                },
                 {transacting: 'trx'}
             );
         });
@@ -1301,8 +1304,11 @@ describe('GiftService', function () {
 
             sinon.assert.calledOnceWithExactly(
                 memberRepository.enqueueWelcomeEmailRun,
-                'member_1',
-                'member-welcome-email-paid',
+                {
+                    memberId: 'member_1',
+                    memberEmail: 'member@example.com',
+                    slug: 'member-welcome-email-paid'
+                },
                 {transacting: 'trx'}
             );
         });
@@ -1323,8 +1329,11 @@ describe('GiftService', function () {
 
             sinon.assert.calledOnceWithExactly(
                 memberRepository.enqueueWelcomeEmailRun,
-                'member_1',
-                'member-welcome-email-paid',
+                {
+                    memberId: 'member_1',
+                    memberEmail: 'member@example.com',
+                    slug: 'member-welcome-email-paid'
+                },
                 {transacting: externalTrx}
             );
         });

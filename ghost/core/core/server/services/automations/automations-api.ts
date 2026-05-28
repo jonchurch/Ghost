@@ -83,11 +83,11 @@ const repository = createFakeDatabaseAutomationsRepository({
     }
 });
 
-async function browse() {
+export async function browse() {
     return await repository.browse();
 }
 
-async function read(automationId: string) {
+export async function read(automationId: string) {
     const automation = await repository.getById(automationId);
 
     if (!automation) {
@@ -99,7 +99,7 @@ async function read(automationId: string) {
     return automation;
 }
 
-async function edit(automationId: string, data: unknown) {
+export async function edit(automationId: string, data: unknown) {
     const parsedData = validateEditData(data);
 
     const automation = await repository.edit(automationId, parsedData);
@@ -235,7 +235,7 @@ function throwValidationError(message: string, property?: string): never {
     });
 }
 
-function requestPoll() {
+export function requestPoll() {
     domainEvents.dispatch(StartAutomationsPollEvent.create());
 }
 
@@ -245,38 +245,24 @@ export async function enqueueRun(...args: Parameters<AutomationsRepository['enqu
     requestPoll();
 }
 
-async function fetchAndLockSteps(...args: Parameters<AutomationsRepository['fetchAndLockSteps']>) {
+export async function fetchAndLockSteps(...args: Parameters<AutomationsRepository['fetchAndLockSteps']>) {
     return await repository.fetchAndLockSteps(...args);
 }
 
-async function finishStepAndEnqueueNext(...args: Parameters<AutomationsRepository['finishStepAndEnqueueNext']>) {
+export async function finishStepAndEnqueueNext(...args: Parameters<AutomationsRepository['finishStepAndEnqueueNext']>) {
     return await repository.finishStepAndEnqueueNext(...args);
 }
 
-async function markStepTerminal(...args: Parameters<AutomationsRepository['markStepTerminal']>) {
+export async function markStepTerminal(...args: Parameters<AutomationsRepository['markStepTerminal']>) {
     return await repository.markStepTerminal(...args);
 }
 
-async function retryStep(...args: Parameters<AutomationsRepository['retryStep']>) {
+export async function retryStep(...args: Parameters<AutomationsRepository['retryStep']>) {
     return await repository.retryStep(...args);
 }
 
-function _resetTestDatabase() {
+export function _resetTestDatabase() {
     if (process.env.NODE_ENV?.startsWith('testing')) {
         testDatabase = null;
     }
 }
-
-// TODO: Destroy this
-module.exports = {
-    _resetTestDatabase,
-    browse,
-    edit,
-    enqueueRun,
-    fetchAndLockSteps,
-    finishStepAndEnqueueNext,
-    markStepTerminal,
-    read,
-    requestPoll,
-    retryStep
-};

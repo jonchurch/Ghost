@@ -6,10 +6,29 @@
 const got = /** @type {Got} */ (/** @type {unknown} */ (require('got').default));
 const dns = require('dns');
 const net = require('net');
+const http = require('http');
+const https = require('https');
 const dnsPromises = require('dns').promises;
 const errors = require('@tryghost/errors');
 const config = require('../../shared/config');
 const validator = require('@tryghost/validator');
+
+// Shared keep-alive agents so outbound HTTPS connections are pooled and reused
+// across page renders / oEmbed / webmention / recommendations / image probes.
+// Without this, each request opens a fresh socket which on a NAT-gatewayed VPC
+// holds the gateway at its connection-rate ceiling and causes port-collision drops.
+const httpAgent = new http.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 60000,
+    maxSockets: 256,
+    maxFreeSockets: 256
+});
+const httpsAgent = new https.Agent({
+    keepAlive: true,
+    keepAliveMsecs: 60000,
+    maxSockets: 256,
+    maxFreeSockets: 256
+});
 
 /**
  * Normalize an IPv4 address from any format (decimal, octal, hex, integer)
@@ -280,6 +299,10 @@ const gotOpts = {
     timeout: {
         request: 10000
     }, // default is no timeout
+    agent: {
+        http: httpAgent,
+        https: httpsAgent
+    },
     hooks: {
         init: process.env.NODE_ENV?.startsWith('test') ? [disableRetries] : [],
         beforeRequest: [errorIfInvalidUrl, errorIfHostnameResolvesToPrivateIp, installSafeDnsLookup],

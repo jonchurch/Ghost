@@ -11,12 +11,6 @@ const mockOfferRedemption = {
     findOne: sinon.stub()
 };
 
-// TODO: Destroy this
-const flushPromises = async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-};
-
 describe('MemberRepository', function () {
     let automationsApi;
 
@@ -1654,7 +1648,6 @@ describe('MemberRepository', function () {
             });
 
             await repo.create({email: 'test@example.com', name: 'Test Member'}, {});
-            await flushPromises();
 
             sinon.assert.calledOnce(WelcomeEmailAutomationRun.add);
             const runCall = WelcomeEmailAutomationRun.add.firstCall.args[0];
@@ -1698,7 +1691,6 @@ describe('MemberRepository', function () {
                 WelcomeEmailAutomationRun.add.resetHistory();
                 automationsApi.trigger.resetHistory();
                 await repo.create({email: 'test@example.com', name: 'Test Member'}, {context: source.context});
-                await flushPromises();
                 sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
                 sinon.assert.notCalled(automationsApi.trigger);
             }
@@ -1753,7 +1745,6 @@ describe('MemberRepository', function () {
             });
 
             await repo.create({email: 'test@example.com', name: 'Test Member'}, {});
-            await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
             sinon.assert.calledOnce(automationsApi.trigger);
@@ -2009,7 +2000,6 @@ describe('MemberRepository', function () {
                 },
                 context: {}
             });
-            await flushPromises();
 
             sinon.assert.calledOnce(WelcomeEmailAutomationRun.add);
             const runCall = WelcomeEmailAutomationRun.add.firstCall.args[0];
@@ -2075,7 +2065,6 @@ describe('MemberRepository', function () {
                     },
                     context: source.context
                 });
-                await flushPromises();
                 sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
                 sinon.assert.notCalled(automationsApi.trigger);
             }
@@ -2135,7 +2124,6 @@ describe('MemberRepository', function () {
                 },
                 context: {}
             });
-            await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
             sinon.assert.calledOnceWithExactly(automationsApi.trigger, {
@@ -2182,7 +2170,6 @@ describe('MemberRepository', function () {
                 },
                 context: {}
             });
-            await flushPromises();
 
             sinon.assert.notCalled(WelcomeEmailAutomationRun.add);
             sinon.assert.notCalled(automationsApi.trigger);

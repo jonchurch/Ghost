@@ -106,7 +106,7 @@ export interface AutomationsRepository {
     trigger(data: {
         memberEmail: string;
         memberId: string;
-        slug: string;
+        memberStatus: 'free' | 'paid';
     }): Promise<void>;
     fetchAndLockSteps(limit: number): Promise<{
         steps: AutomationStepToRun[],

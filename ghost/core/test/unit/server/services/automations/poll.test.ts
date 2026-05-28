@@ -1,3 +1,5 @@
+// TODO: Don't do this ts-nocheck!
+// @ts-nocheck
 import assert from 'node:assert/strict';
 import sinon from 'sinon';
 

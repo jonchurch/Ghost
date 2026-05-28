@@ -140,7 +140,7 @@ export function createFakeDatabaseAutomationsRepository({
         async trigger(data: {
             memberEmail: string;
             memberId: string;
-            slug: string;
+            memberStatus: 'free' | 'paid';
         }): Promise<void> {
             const database = getDatabase();
 
@@ -294,13 +294,13 @@ function fetchAndLockSteps(database: DatabaseSync, limit: number): {
 function trigger(database: DatabaseSync, {
     memberEmail,
     memberId,
-    slug
+    memberStatus
 }: {
     memberEmail: string;
     memberId: string;
-    slug: string;
+    memberStatus: 'free' | 'paid';
 }): void {
-    const firstAction = findFirstActionRevision(database, slug);
+    const firstAction = findFirstActionRevision(database, memberStatus);
 
     if (!firstAction?.automation_id) {
         return;
@@ -363,7 +363,7 @@ function trigger(database: DatabaseSync, {
     });
 }
 
-function findFirstActionRevision(database: DatabaseSync, slug: string): NextActionRevisionRow | null {
+function findFirstActionRevision(database: DatabaseSync, memberStatus: 'free' | 'paid'): NextActionRevisionRow | null {
     const row = database.prepare(`
         SELECT
             automation.id AS automation_id,
@@ -391,7 +391,7 @@ function findFirstActionRevision(database: DatabaseSync, slug: string): NextActi
             )
         ORDER BY action.created_at, action.id
         LIMIT 1
-    `).get(slug) as NextActionRevisionRow | undefined;
+    `).get(memberStatus) as NextActionRevisionRow | undefined;
 
     return row ?? null;
 }

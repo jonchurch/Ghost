@@ -249,6 +249,7 @@ export async function trigger(...args: Parameters<AutomationsRepository['trigger
     }
 
     await repository.trigger(...args);
+
     requestPoll();
 }
 

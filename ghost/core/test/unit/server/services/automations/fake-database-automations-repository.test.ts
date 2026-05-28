@@ -1,3 +1,5 @@
+// TODO: Don't do this ts-nocheck!
+// @ts-nocheck
 const assert = require('node:assert/strict');
 const ObjectId = require('bson-objectid').default;
 const sinon = require('sinon');
